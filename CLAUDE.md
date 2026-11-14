@@ -119,7 +119,7 @@ Chaque scénario est répété **5 fois minimum**. Les résultats bruts sont sau
 - [x] `docker-compose.yml` avec Ollama et le modèle téléchargé
 - [x] Données fictives (`data/`) et canary dans `.env`
 - [x] Module partagé : client LLM, RAG, outils, journalisation
-- [ ] Version A : chatbot naïf (secret dans le prompt, outils sans restriction, pas de filtre)
+- [x] Version A : chatbot naïf (secret dans le prompt, outils sans restriction, pas de filtre)
 - [ ] Interface Streamlit permettant de choisir A ou B
 - [ ] README : comment lancer le labo en une commande
 
