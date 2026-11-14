@@ -136,11 +136,20 @@ Ajouter une protection à la fois, tester, committer :
 - [ ] Prompt système durci, sans secret
 - [ ] Filtre d'entrée (injection, encodage, taille max)
 - [ ] Classifieur de sécurité
-- [ ] Délimitation et nettoyage des documents RAG
+- [ ] Délimitation et nettoyage des documents RAG **et des résultats d'outils** (une note client peut aussi contenir une injection)
 - [ ] Filtre de sortie (canary, données personnelles, HTML)
 - [ ] Outils en moindre privilège + confirmation
-- [ ] Rate limiting et quotas
-- [ ] Journalisation structurée avec alertes
+- [ ] Fiche client minimisée : seulement les champs utiles, jamais la note interne (LLM02, RGPD)
+- [ ] Rate limiting et quotas, dont une taille maximale de réponse (`num_predict`)
+- [ ] Journalisation structurée avec alertes, **canary et données personnelles masqués dans les journaux** (RGPD)
+- [ ] Fermer le port d'Ollama (`127.0.0.1:11434`, sans authentification) : accès uniquement par le réseau interne
+
+### Bonus — si le projet est terminé avant la date
+Protections identifiées le 14/11/2026, hors scénarios A1 à A10 :
+- [ ] Durcissement des conteneurs : système de fichiers en lecture seule, `cap_drop: ALL`, `no-new-privileges`, limites mémoire / CPU
+- [ ] Intégrité des documents RAG : empreintes (hash) vérifiées au démarrage (LLM04, empoisonnement)
+
+À traiter en **analyse théorique** dans le rapport : chaîne d'approvisionnement (LLM03 : modèle et bibliothèques téléchargés, versions non figées au chiffre près), hallucinations (LLM09 : adresse e-mail inventée, fausse définition), absence de vraie authentification (cause profonde de A8), compromis réseau de l'interface, échanges non chiffrés entre conteneurs.
 
 ### P5 — Campagne APRÈS
 - [ ] Même script, même scénarios, cible B, résultats dans `results/after/`
