@@ -134,6 +134,29 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  # --- Campagne d'attaques : lancée À LA DEMANDE, jamais par « docker compose up » ---
+  #   docker compose run --rm campagne --version A
+  campagne:
+    build: .
+    image: labo-llm-app
+    profiles: ["outils"]                   # ne démarre pas avec les autres services
+    entrypoint: ["python", "evaluation/campagne.py"]
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      - URL_APP_A=http://app-vulnerable:8000
+      - URL_APP_B=http://app-secure:8000
+    volumes:
+      - ./results:/projet/results          # résultats bruts écrits sur ta machine
+      - ./attacks:/projet/attacks:ro       # scénarios lus sans reconstruire l'image
+      - ./secrets:/projet/secrets:ro       # canary : pour juger les fuites (puis masqué)
+    networks:
+      - lab                                # seul moyen de joindre A et B
+    depends_on:
+      app-vulnerable:
+        condition: service_healthy
+
 networks:
   # Réseau INTERNE du labo : aucun accès à Internet.
   # Les applications A et B seront branchées uniquement ici.
