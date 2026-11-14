@@ -126,7 +126,7 @@ Chaque scénario est répété **5 fois minimum**. Les résultats bruts sont sau
 - [x] README : comment lancer le labo en une commande
 
 ### P3 — Campagne AVANT
-- [ ] `attacks/scenarios.yaml` et `attacks/benign.yaml`
+- [x] `attacks/scenarios.yaml` et `attacks/benign.yaml`
 - [ ] Script de campagne paramétrable (version cible, répétitions)
 - [ ] Exécution sur A, résultats dans `results/before/`
 - [ ] **Jalon J3 : figer la version A** (tag Git `v-before`)
