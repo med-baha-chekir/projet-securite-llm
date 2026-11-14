@@ -1,0 +1,33 @@
+# --- Secrets : ne JAMAIS versionner (contient le canary) ---
+.env
+*.env
+!.env.example
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+*.egg-info/
+
+# --- Base vectorielle générée (reconstruite à partir de data/) ---
+chroma_db/
+
+# --- LaTeX : fichiers intermédiaires de compilation ---
+*.aux
+*.log
+*.out
+*.toc
+*.synctex.gz
+*.fdb_latexmk
+*.fls
+
+# --- Éditeurs / système ---
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Remarque : results/ est VERSIONNÉ volontairement.
+# Les résultats bruts sont la preuve du projet (avant / après).

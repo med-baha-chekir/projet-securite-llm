@@ -1,0 +1,70 @@
+# ============================================================
+#  Laboratoire « Sécurité d'un LLM : avant / après »
+#  Lancement :  docker compose up -d
+#
+#  Pour l'instant : uniquement le modèle local (Ollama).
+#  Les services app-vulnerable, app-secure et ui seront ajoutés
+#  aux étapes suivantes.
+# ============================================================
+
+services:
+
+  # --- Modèle local : Ollama (aucune API externe) ---
+  ollama:
+    image: ollama/ollama:0.40.16           # version figée pour la reproductibilité
+    container_name: llm-ollama
+    restart: unless-stopped
+    volumes:
+      - ollama-data:/root/.ollama          # le modèle téléchargé est conservé ici
+    environment:
+      - OLLAMA_KEEP_ALIVE=30m              # garde le modèle chargé en mémoire entre deux requêtes
+      - OLLAMA_NUM_PARALLEL=1              # une requête à la fois : latences comparables entre A et B
+      - OLLAMA_NO_CLOUD=1                  # interdit les modèles « cloud » d'Ollama : 100 % local
+    ports:
+      # Exposé UNIQUEMENT sur la machine locale (127.0.0.1), pour les tests.
+      # Rien n'est accessible depuis le réseau extérieur.
+      - "127.0.0.1:11434:11434"
+    networks:
+      - lab
+      - telechargement
+    # Utilisation de la carte graphique NVIDIA (RTX 3050 Ti, 4 Go)
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # --- Téléchargement automatique du modèle au premier lancement ---
+  # S'exécute une fois, puis s'arrête. Si le modèle est déjà présent,
+  # « ollama pull » vérifie simplement qu'il est à jour.
+  ollama-init:
+    image: ollama/ollama:0.40.16
+    container_name: llm-ollama-init
+    depends_on:
+      ollama:
+        condition: service_healthy
+    environment:
+      - OLLAMA_HOST=http://ollama:11434
+    entrypoint: ["ollama", "pull", "${MODEL_NAME:-llama3.1:8b}"]
+    networks:
+      - lab
+    restart: "no"
+
+networks:
+  # Réseau INTERNE du labo : aucun accès à Internet.
+  # Les applications A et B seront branchées uniquement ici.
+  lab:
+    internal: true
+  # Réseau avec accès Internet, réservé à Ollama pour télécharger
+  # le modèle. Les applications n'y seront jamais connectées.
+  telechargement:
+
+volumes:
+  ollama-data:

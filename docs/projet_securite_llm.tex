@@ -1,0 +1,469 @@
+% ============================================================
+%  Projet Cybersécurité : Sécurité d'un LLM — Avant / Après
+%  Compilation : pdflatex (ou Overleaf), deux passes pour la table des matières
+% ============================================================
+\documentclass[11pt,a4paper]{article}
+
+% ---------- Encodage et langue ----------
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[french]{babel}
+\usepackage{lmodern}
+
+% ---------- Mise en page ----------
+\usepackage[margin=2.2cm]{geometry}
+\usepackage{fancyhdr}
+\usepackage{titlesec}
+\usepackage{enumitem}
+\setlist{itemsep=2pt, topsep=4pt}
+
+% ---------- Tableaux, couleurs, schémas ----------
+\usepackage[table]{xcolor}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{tikz}
+\usetikzlibrary{positioning, arrows.meta, shapes.geometric, fit, backgrounds}
+\usepackage[most]{tcolorbox}
+\usepackage{hyperref}
+
+% ---------- Palette ----------
+\definecolor{bleu}{HTML}{1F3A5F}
+\definecolor{bleuclair}{HTML}{E8EEF6}
+\definecolor{rouge}{HTML}{B03A2E}
+\definecolor{rougeclair}{HTML}{FBEAE8}
+\definecolor{vert}{HTML}{1E7B4F}
+\definecolor{vertclair}{HTML}{E6F4EC}
+\definecolor{gris}{HTML}{5A5A5A}
+
+\hypersetup{colorlinks=true, linkcolor=bleu, urlcolor=bleu, citecolor=bleu}
+
+% ---------- Titres ----------
+\titleformat{\section}{\Large\bfseries\color{bleu}}{\thesection.}{0.6em}{}[\color{bleu}\titlerule]
+\titleformat{\subsection}{\large\bfseries\color{bleu}}{\thesubsection}{0.6em}{}
+\titlespacing*{\section}{0pt}{1.4em}{0.8em}
+
+% ---------- En-tête / pied de page ----------
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\small\color{gris} Sécurité d'un LLM : avant / après}
+\fancyhead[R]{\small\color{gris} Projet Cybersécurité}
+\fancyfoot[C]{\small\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+
+% ---------- Encadrés ----------
+\newtcolorbox{boiteinfo}[1]{colback=bleuclair, colframe=bleu, fonttitle=\bfseries, title=#1, arc=2mm, boxrule=0.6pt}
+\newtcolorbox{boiteavant}{colback=rougeclair, colframe=rouge, fonttitle=\bfseries, title=AVANT : système vulnérable, arc=2mm, boxrule=0.6pt}
+\newtcolorbox{boiteapres}{colback=vertclair, colframe=vert, fonttitle=\bfseries, title=APRÈS : système sécurisé, arc=2mm, boxrule=0.6pt}
+
+\newcolumntype{Y}{>{\raggedright\arraybackslash}X}
+\newcolumntype{P}[1]{>{\raggedright\arraybackslash}p{#1}}
+
+% ---------- Informations à personnaliser ----------
+\newcommand{\etudiant}{Prénom NOM}
+\newcommand{\professeur}{Mme / M. NOM}
+\newcommand{\etablissement}{Nom de l'établissement}
+\newcommand{\formation}{Formation / Classe}
+\newcommand{\anneeuniv}{2026 -- 2027}
+
+% ============================================================
+\begin{document}
+
+% ---------------- PAGE DE GARDE ----------------
+\begin{titlepage}
+\centering
+{\large\color{gris}\etablissement\par}
+{\color{gris}\formation\par}
+\vspace{3cm}
+{\color{bleu}\rule{\linewidth}{1pt}\par}
+\vspace{0.6cm}
+{\Huge\bfseries\color{bleu} Sécurité d'un grand modèle de langage (LLM)\par}
+\vspace{0.4cm}
+{\Large Analyse des menaces, attaques et contre-mesures :\\ démonstration \textbf{avant / après} sécurisation\par}
+\vspace{0.6cm}
+{\color{bleu}\rule{\linewidth}{1pt}\par}
+\vspace{2.5cm}
+
+\begin{tikzpicture}
+  \node[draw=rouge, fill=rougeclair, rounded corners, minimum width=4.2cm, minimum height=1.2cm, font=\bfseries\color{rouge}] (a) {LLM vulnérable};
+  \node[draw=vert, fill=vertclair, rounded corners, minimum width=4.2cm, minimum height=1.2cm, font=\bfseries\color{vert}, right=2.2cm of a] (b) {LLM sécurisé};
+  \draw[-{Stealth[length=3mm]}, very thick, bleu] (a) -- node[above, font=\small\color{bleu}] {durcissement} (b);
+\end{tikzpicture}
+
+\vfill
+\begin{tabular}{rl}
+\textbf{Réalisé par :} & \etudiant \\
+\textbf{Encadré par :} & \professeur \\
+\textbf{Matière :} & Cybersécurité \\
+\textbf{Année :} & \anneeuniv \\
+\end{tabular}
+\end{titlepage}
+
+\tableofcontents
+\newpage
+
+% ============================================================
+\section{Contexte et problématique}
+
+Les grands modèles de langage (LLM) sont aujourd'hui intégrés dans des chatbots d'entreprise, des assistants de support, des outils internes connectés à des documents et à des API. Cette intégration crée une \textbf{nouvelle surface d'attaque} : contrairement à un logiciel classique, un LLM reçoit des instructions en langage naturel, et il ne sait pas distinguer de façon fiable une instruction légitime d'une instruction malveillante cachée dans un texte.
+
+\begin{boiteinfo}{Problématique}
+Comment une application fondée sur un LLM peut-elle être attaquée, et dans quelle mesure des contre-mesures concrètes permettent-elles de réduire ces risques de façon \textbf{mesurable} ?
+\end{boiteinfo}
+
+% ============================================================
+\section{But et objectifs du projet}
+
+\subsection{But général}
+Concevoir un laboratoire isolé contenant une application LLM, démontrer ses vulnérabilités, puis la sécuriser et \textbf{prouver par des mesures} l'efficacité des protections, en comparant l'état \textbf{avant} et \textbf{après} sécurisation.
+
+\subsection{Objectifs spécifiques}
+\begin{enumerate}
+  \item Identifier la surface d'attaque d'une application LLM à l'aide des référentiels OWASP et MITRE ATLAS.
+  \item Déployer une version volontairement vulnérable d'un chatbot (version \textbf{A}).
+  \item Réaliser une campagne d'attaques reproductible et documentée.
+  \item Mettre en place des contre-mesures en défense en profondeur (version \textbf{B}).
+  \item Rejouer exactement les mêmes attaques et comparer les résultats à l'aide d'indicateurs chiffrés.
+  \item Analyser les limites des protections et le cadre juridique (RGPD, AI Act).
+\end{enumerate}
+
+\subsection{Périmètre}
+\begin{tabularx}{\linewidth}{@{}YY@{}}
+\toprule
+\textbf{Dans le périmètre} & \textbf{Hors périmètre} \\
+\midrule
+Modèle exécuté localement (aucun service tiers attaqué) &
+Attaque de services en ligne (ChatGPT, Claude, etc.) \\
+Application de type chatbot avec documents internes (RAG) &
+Entraînement complet d'un modèle \\
+Prompt injection, fuite de données, abus d'outils, déni de service &
+Attaques matérielles ou sur l'infrastructure physique \\
+Données fictives uniquement (faux secrets, faux clients) &
+Toute donnée personnelle réelle \\
+\bottomrule
+\end{tabularx}
+
+% ============================================================
+\section{Méthodologie : l'approche avant / après}
+
+Le cœur du projet est une \textbf{comparaison contrôlée} : le même modèle, les mêmes données, les mêmes attaques ; seule la présence des protections change.
+
+\begin{center}
+\begin{tikzpicture}[
+  etape/.style={draw=bleu, fill=bleuclair, rounded corners, minimum width=2.5cm, minimum height=1.1cm, align=center, font=\small},
+  fl/.style={-{Stealth[length=2.5mm]}, thick, bleu}]
+  \node[etape] (e1) {1. Déployer\\version A};
+  \node[etape, right=0.5cm of e1] (e2) {2. Attaquer\\(campagne)};
+  \node[etape, right=0.5cm of e2, draw=rouge, fill=rougeclair] (e3) {3. Mesurer\\\textbf{AVANT}};
+  \node[etape, below=1cm of e3] (e4) {4. Sécuriser\\version B};
+  \node[etape, left=0.5cm of e4] (e5) {5. Rejouer les\\mêmes attaques};
+  \node[etape, left=0.5cm of e5, draw=vert, fill=vertclair] (e6) {6. Mesurer\\\textbf{APRÈS}};
+  \draw[fl] (e1) -- (e2); \draw[fl] (e2) -- (e3); \draw[fl] (e3) -- (e4);
+  \draw[fl] (e4) -- (e5); \draw[fl] (e5) -- (e6);
+\end{tikzpicture}
+\end{center}
+
+\subsection{Indicateurs de mesure}
+\begin{tabularx}{\linewidth}{@{}lY@{}}
+\toprule
+\textbf{Indicateur} & \textbf{Définition} \\
+\midrule
+Taux de succès d'attaque (ASR) & Pourcentage d'attaques ayant atteint leur objectif. Indicateur principal. \\
+Fuite de secret (canary) & Un faux secret unique est placé dans le système ; on vérifie s'il apparaît dans les réponses. \\
+Faux positifs & Pourcentage de questions légitimes bloquées à tort par les protections. \\
+Latence ajoutée & Temps de réponse moyen avant / après, pour mesurer le coût des protections. \\
+Détection & Pourcentage d'attaques correctement journalisées et signalées. \\
+\bottomrule
+\end{tabularx}
+
+\medskip
+Chaque attaque est exécutée \textbf{plusieurs fois} (par exemple 5 répétitions), car un LLM ne répond pas toujours de la même façon. Le résultat retenu est le taux de réussite moyen.
+
+% ============================================================
+\section{Architecture du laboratoire}
+
+\subsection{Composants}
+\begin{itemize}
+  \item \textbf{Interface utilisateur} : page web de chat.
+  \item \textbf{API applicative} : reçoit les messages, construit le prompt, appelle le modèle.
+  \item \textbf{Modèle local} : LLM open source exécuté sur la machine (aucune donnée envoyée à l'extérieur).
+  \item \textbf{Base documentaire (RAG)} : documents internes fictifs indexés dans une base vectorielle.
+  \item \textbf{Outils} : fonctions que le chatbot peut appeler (ex. consulter une fiche client fictive).
+  \item \textbf{Journalisation} : enregistrement des requêtes, réponses et alertes.
+\end{itemize}
+
+\subsection{Version A (avant) et version B (après)}
+
+\begin{center}
+\begin{tikzpicture}[
+  bloc/.style={draw, rounded corners, minimum width=2.3cm, minimum height=0.9cm, align=center, font=\small},
+  garde/.style={draw=vert, fill=vertclair, rounded corners, minimum width=2.3cm, minimum height=0.9cm, align=center, font=\small\bfseries},
+  fl/.style={-{Stealth[length=2mm]}, thick}]
+  % Version A
+  \node[font=\bfseries\color{rouge}] at (-0.6,1) {Version A};
+  \node[bloc] (ua) at (0,0) {Utilisateur};
+  \node[bloc, right=0.6cm of ua] (apia) {API};
+  \node[bloc, right=0.6cm of apia] (llma) {LLM};
+  \node[bloc, right=0.6cm of llma] (ra) {Docs + Outils};
+  \draw[fl] (ua) -- (apia); \draw[fl] (apia) -- (llma); \draw[fl] (llma) -- (ra);
+  \begin{scope}[on background layer]
+    \node[draw=rouge, fill=rougeclair, rounded corners, inner sep=8pt, fit=(ua)(ra)] {};
+  \end{scope}
+  % Version B
+  \node[font=\bfseries\color{vert}] at (-0.6,-1.6) {Version B};
+  \node[bloc] (ub) at (0,-3) {Utilisateur};
+  \node[garde, right=0.4cm of ub] (fe) {Filtre\\entrée};
+  \node[bloc, right=0.4cm of fe] (llmb) {LLM\\durci};
+  \node[garde, right=0.4cm of llmb] (fs) {Filtre\\sortie};
+  \node[garde, below=0.5cm of llmb, font=\footnotesize\bfseries] (pr) {Outils en\\moindre privilège};
+  \node[bloc, below=0.5cm of fe] (log) {Logs +\\alertes};
+  \draw[fl] (ub) -- (fe); \draw[fl] (fe) -- (llmb); \draw[fl] (llmb) -- (fs);
+  \draw[fl] (llmb) -- (pr); \draw[fl, dashed] (fe) -- (log);
+  \begin{scope}[on background layer]
+    \node[draw=vert, fill=vertclair!40, rounded corners, inner sep=8pt, fit=(ub)(fs)(pr)(log)] {};
+  \end{scope}
+\end{tikzpicture}
+\end{center}
+
+\begin{boiteavant}
+Prompt système naïf contenant un secret, aucun filtrage, documents RAG non vérifiés, outils avec accès complet, pas de limite de requêtes, pas de journalisation.
+\end{boiteavant}
+
+\begin{boiteapres}
+Prompt système durci sans secret, filtrage des entrées et sorties, classifieur de sécurité, séparation des données et des instructions, outils en lecture seule avec confirmation, limitation de débit, journalisation et alertes.
+\end{boiteapres}
+
+% ============================================================
+\section{Référentiels utilisés}
+
+\begin{tabularx}{\linewidth}{@{}lY@{}}
+\toprule
+\textbf{Référentiel} & \textbf{Utilisation dans le projet} \\
+\midrule
+OWASP Top 10 for LLM Applications (2025) & Fil conducteur : chaque attaque est rattachée à une catégorie. \\
+MITRE ATLAS & Description des tactiques et techniques d'attaque contre l'IA. \\
+NIST AI RMF & Cadre de gestion des risques de l'IA (gouvernance). \\
+ANSSI : recommandations IA générative & Bonnes pratiques de sécurité pour les systèmes d'IA générative. \\
+RGPD et AI Act européen & Cadre juridique : données personnelles et obligations des systèmes d'IA. \\
+\bottomrule
+\end{tabularx}
+
+\subsection{Catégories OWASP couvertes}
+\begin{tabularx}{\linewidth}{@{}lYc@{}}
+\toprule
+\textbf{Code} & \textbf{Risque} & \textbf{Traité} \\
+\midrule
+LLM01 & Prompt injection (directe et indirecte) & \textcolor{vert}{\textbf{Oui}} \\
+LLM02 & Divulgation d'informations sensibles & \textcolor{vert}{\textbf{Oui}} \\
+LLM05 & Mauvaise gestion des sorties & \textcolor{vert}{\textbf{Oui}} \\
+LLM06 & Autonomie excessive (abus d'outils) & \textcolor{vert}{\textbf{Oui}} \\
+LLM07 & Fuite du prompt système & \textcolor{vert}{\textbf{Oui}} \\
+LLM08 & Faiblesses des vecteurs et embeddings (RAG) & \textcolor{vert}{\textbf{Oui}} \\
+LLM10 & Consommation non bornée (déni de service) & \textcolor{vert}{\textbf{Oui}} \\
+LLM03, 04, 09 & Chaîne d'approvisionnement, empoisonnement, désinformation & \textcolor{gris}{Analyse théorique} \\
+\bottomrule
+\end{tabularx}
+
+% ============================================================
+\section{Scénarios d'attaque et contre-mesures}
+
+\rowcolors{2}{bleuclair}{white}
+\begin{longtable}{@{}P{0.9cm}P{1.3cm}P{4.6cm}P{6.6cm}@{}}
+\toprule
+\textbf{ID} & \textbf{OWASP} & \textbf{Attaque} & \textbf{Contre-mesure (version B)} \\
+\midrule
+\endhead
+A1 & LLM01 & Injection directe : « ignore tes instructions précédentes » & Détection des motifs d'injection, classifieur de sécurité, prompt système durci \\
+A2 & LLM01 & Jeu de rôle / jailbreak pour contourner les règles & Classifieur de sécurité (ex. Llama Guard), règles de refus explicites \\
+A3 & LLM07 & Extraction du prompt système & Aucun secret dans le prompt, détection de la reformulation du prompt en sortie \\
+A4 & LLM02 & Fuite d'un secret factice (canary) & Filtrage de sortie, recherche du canary, masquage des données sensibles \\
+A5 & LLM01 / LLM08 & Injection indirecte cachée dans un document RAG & Délimitation claire données / instructions, nettoyage et validation des documents \\
+A6 & LLM06 & Pousser le chatbot à utiliser un outil de façon abusive & Moindre privilège, liste blanche d'actions, validation humaine \\
+A7 & LLM05 & Faire générer du HTML ou JavaScript malveillant & Échappement et validation des sorties avant affichage \\
+A8 & LLM02 & Demande de données personnelles d'un autre client fictif & Contrôle d'accès par utilisateur, détection des données personnelles \\
+A9 & LLM10 & Requêtes massives ou très longues (déni de service) & Limitation de débit, taille maximale d'entrée, quotas de tokens \\
+A10 & LLM01 & Contournement par encodage ou autre langue & Normalisation des entrées, classifieur multilingue \\
+\bottomrule
+\end{longtable}
+\rowcolors{1}{}{}
+
+% ============================================================
+\section{Outils et technologies}
+
+\begin{longtable}{@{}P{3.3cm}P{4.2cm}P{7.2cm}@{}}
+\toprule
+\textbf{Catégorie} & \textbf{Outil} & \textbf{Rôle dans le projet} \\
+\midrule
+\endhead
+\multicolumn{3}{@{}l}{\cellcolor{bleuclair}\textbf{Environnement}} \\
+Conteneurs & Docker, Docker Compose & Isoler le laboratoire, lancer versions A et B côte à côte \\
+Versionnement & Git, GitHub & Historique du projet, traçabilité \\
+Langage & Python & Langage principal de l'application et des tests \\
+\multicolumn{3}{@{}l}{\cellcolor{bleuclair}\textbf{Application LLM}} \\
+Modèle local & Ollama + Llama 3 ou Mistral & Exécuter le LLM sans service externe \\
+API & FastAPI & Exposer le chatbot \\
+Interface & Streamlit ou Gradio & Interface de chat pour la démonstration \\
+RAG & ChromaDB, LangChain ou LlamaIndex & Base documentaire interne fictive \\
+\multicolumn{3}{@{}l}{\cellcolor{rougeclair}\textbf{Tests offensifs (red team)}} \\
+Scanner de LLM & garak (NVIDIA) & Scan automatique de vulnérabilités du modèle \\
+Évaluation & promptfoo & Rejouer un jeu d'attaques et comparer A / B \\
+Red teaming & PyRIT (Microsoft) & Automatiser des campagnes d'attaques \\
+\multicolumn{3}{@{}l}{\cellcolor{vertclair}\textbf{Défenses}} \\
+Filtrage & LLM Guard & Scanners d'entrées et de sorties \\
+Garde-fous & NeMo Guardrails & Règles de conversation et de refus \\
+Classifieur & Llama Guard & Classer une requête ou réponse comme sûre ou dangereuse \\
+Données sensibles & Microsoft Presidio & Détecter et masquer les données personnelles \\
+Débit & Limiteur de requêtes (ex. slowapi) & Protection contre les abus et le déni de service \\
+\multicolumn{3}{@{}l}{\cellcolor{bleuclair}\textbf{Mesure et rapport}} \\
+Analyse & pandas, matplotlib & Calcul des indicateurs, graphiques avant / après \\
+Supervision & Journaux structurés (JSON), Langfuse (optionnel) & Traçabilité des requêtes et alertes \\
+Documentation & LaTeX, Overleaf & Rapport final \\
+\bottomrule
+\end{longtable}
+
+% ============================================================
+\section{Roadmap du projet}
+
+\subsection{Phases et livrables}
+\begin{longtable}{@{}P{1.3cm}P{3.6cm}P{6cm}P{3.6cm}@{}}
+\toprule
+\textbf{Phase} & \textbf{Intitulé} & \textbf{Tâches principales} & \textbf{Livrable} \\
+\midrule
+\endhead
+P0 & Cadrage & Choix du périmètre, lecture OWASP et ATLAS, validation du sujet avec l'enseignant & Note de cadrage \\
+P1 & État de l'art & Étude des menaces, incidents réels, outils existants & Chapitre état de l'art \\
+P2 & Laboratoire & Docker, Ollama, chatbot, RAG avec données fictives, outils & Version A fonctionnelle \\
+P3 & Campagne AVANT & Écriture des 10 scénarios, exécution répétée, collecte des résultats & Résultats bruts AVANT \\
+P4 & Sécurisation & Mise en place des défenses couche par couche & Version B fonctionnelle \\
+P5 & Campagne APRÈS & Rejeu des mêmes scénarios, mesure des faux positifs et de la latence & Résultats bruts APRÈS \\
+P6 & Analyse & Comparaison, graphiques, limites, cadre juridique & Chapitre résultats \\
+P7 & Restitution & Rapport final, diapositives, vidéo de démo de secours & Rapport + soutenance \\
+\bottomrule
+\end{longtable}
+
+\subsection{Planning (8 semaines)}
+\newcommand{\on}{\cellcolor{bleu}}
+\newcommand{\av}{\cellcolor{rouge}}
+\newcommand{\ap}{\cellcolor{vert}}
+\begin{center}
+\setlength{\tabcolsep}{4pt}
+\renewcommand{\arraystretch}{1.4}
+\begin{tabular}{@{}l|*{8}{p{0.9cm}|}@{}}
+\textbf{Phase} & \textbf{S1} & \textbf{S2} & \textbf{S3} & \textbf{S4} & \textbf{S5} & \textbf{S6} & \textbf{S7} & \textbf{S8} \\
+\hline
+P0 Cadrage       & \on &     &     &     &     &     &     &     \\ \hline
+P1 État de l'art & \on & \on &     &     &     &     &     &     \\ \hline
+P2 Laboratoire   &     & \on & \on &     &     &     &     &     \\ \hline
+P3 Campagne AVANT&     &     &     & \av &     &     &     &     \\ \hline
+P4 Sécurisation  &     &     &     & \ap & \ap &     &     &     \\ \hline
+P5 Campagne APRÈS&     &     &     &     &     & \ap &     &     \\ \hline
+P6 Analyse       &     &     &     &     &     & \on & \on &     \\ \hline
+P7 Restitution   &     &     &     &     &     &     & \on & \on \\ \hline
+\end{tabular}
+\end{center}
+
+\subsection{Jalons}
+\begin{itemize}
+  \item \textbf{J1 (fin S1)} : sujet et périmètre validés par l'enseignant.
+  \item \textbf{J2 (fin S3)} : version A opérationnelle dans Docker.
+  \item \textbf{J3 (fin S4)} : résultats AVANT figés (ne plus modifier la version A).
+  \item \textbf{J4 (fin S6)} : résultats APRÈS obtenus sur les mêmes scénarios.
+  \item \textbf{J5 (S8)} : rapport rendu et soutenance.
+\end{itemize}
+
+% ============================================================
+\section{Organisation du dépôt}
+\begin{tcolorbox}[colback=white, colframe=gris, boxrule=0.5pt, arc=1mm, title=Arborescence prévue, fonttitle=\bfseries\small, coltitle=white, colbacktitle=gris]
+\small\ttfamily
+projet-securite-llm/\\
+\hspace*{1em}CLAUDE.md \hfill \textrm{\textit{consignes pour l'assistant de développement}}\\
+\hspace*{1em}README.md\\
+\hspace*{1em}docker-compose.yml \hfill \textrm{\textit{lance versions A et B}}\\
+\hspace*{1em}app/\\
+\hspace*{2em}vulnerable/ \hfill \textrm{\textit{version A (avant)}}\\
+\hspace*{2em}secure/ \hfill \textrm{\textit{version B (après)}}\\
+\hspace*{2em}shared/ \hfill \textrm{\textit{code commun}}\\
+\hspace*{1em}data/ \hfill \textrm{\textit{documents et clients fictifs}}\\
+\hspace*{1em}attacks/ \hfill \textrm{\textit{scénarios A1 à A10}}\\
+\hspace*{1em}evaluation/ \hfill \textrm{\textit{scripts de mesure}}\\
+\hspace*{1em}results/ \hfill \textrm{\textit{résultats avant / après, graphiques}}\\
+\hspace*{1em}docs/ \hfill \textrm{\textit{rapport LaTeX, diapositives}}
+\end{tcolorbox}
+
+% ============================================================
+\section{Résultats attendus (modèle de présentation)}
+Le tableau suivant sera rempli avec les mesures réelles. Il constitue la preuve centrale du projet.
+
+\begin{center}
+\renewcommand{\arraystretch}{1.3}
+\begin{tabular}{@{}lccc@{}}
+\toprule
+\textbf{Indicateur} & \cellcolor{rougeclair}\textbf{Avant (A)} & \cellcolor{vertclair}\textbf{Après (B)} & \textbf{Évolution} \\
+\midrule
+Taux de succès d'attaque global & \ldots\,\% & \ldots\,\% & \ldots \\
+Fuite du secret canary & \ldots\,/\,10 & \ldots\,/\,10 & \ldots \\
+Faux positifs (questions légitimes) & \ldots\,\% & \ldots\,\% & \ldots \\
+Latence moyenne & \ldots\,s & \ldots\,s & \ldots \\
+Attaques détectées et journalisées & \ldots\,\% & \ldots\,\% & \ldots \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Un graphique en barres par scénario (A1 à A10) montrera visuellement la baisse du taux de succès.
+
+% ============================================================
+\section{Plan de la soutenance}
+\begin{enumerate}
+  \item \textbf{Contexte} (1 min) : pourquoi les LLM sont une nouvelle cible.
+  \item \textbf{Surface d'attaque} (2 min) : architecture et catégories OWASP.
+  \item \textbf{Démonstration AVANT} (3 min) : le chatbot divulgue son secret et exécute une injection.
+  \item \textbf{Défenses} (3 min) : présentation des couches de protection.
+  \item \textbf{Démonstration APRÈS} (3 min) : les mêmes attaques échouent.
+  \item \textbf{Résultats chiffrés} (2 min) : tableau et graphique comparatifs.
+  \item \textbf{Limites et cadre juridique} (1 min) : aucune défense n'est parfaite ; RGPD, AI Act.
+  \item \textbf{Conclusion et questions}.
+\end{enumerate}
+
+\begin{boiteinfo}{Conseil}
+Prévoir une \textbf{vidéo de secours} de la démonstration au cas où le matériel ou le modèle poserait problème le jour de la soutenance.
+\end{boiteinfo}
+
+% ============================================================
+\section{Risques du projet et éthique}
+\begin{tabularx}{\linewidth}{@{}lY@{}}
+\toprule
+\textbf{Risque} & \textbf{Mesure} \\
+\midrule
+Machine trop peu puissante pour le modèle & Choisir un petit modèle (taille réduite, version quantifiée) \\
+Résultats non reproductibles & Répéter chaque attaque, fixer les paramètres (température, graine) \\
+Retard sur le planning & Prioriser A1 à A6, garder A7 à A10 en bonus \\
+Usage malveillant des techniques & Environnement isolé, données fictives, aucune cible externe \\
+\bottomrule
+\end{tabularx}
+
+\medskip
+\textbf{Engagement éthique} : toutes les attaques sont menées sur un système personnel, isolé et sans donnée réelle. Aucun service tiers n'est testé sans autorisation.
+
+% ============================================================
+\section{Livrables finaux}
+\begin{itemize}
+  \item Dépôt Git complet et documenté (versions A et B, scénarios, scripts de mesure).
+  \item Rapport technique (ce document complété).
+  \item Tableau et graphiques de comparaison avant / après.
+  \item Diapositives de soutenance et vidéo de démonstration.
+\end{itemize}
+
+% ============================================================
+\section*{Références}
+\addcontentsline{toc}{section}{Références}
+\begin{itemize}
+  \item OWASP, \textit{Top 10 for Large Language Model Applications}, 2025. \url{https://genai.owasp.org}
+  \item MITRE, \textit{ATLAS : Adversarial Threat Landscape for AI Systems}. \url{https://atlas.mitre.org}
+  \item NIST, \textit{AI Risk Management Framework (AI RMF 1.0)}, 2023.
+  \item ANSSI, \textit{Recommandations de sécurité pour un système d'IA générative}, 2024.
+  \item Union européenne, \textit{Règlement sur l'intelligence artificielle (AI Act)}, 2024.
+  \item Greshake et al., \textit{Not what you've signed up for: Compromising Real-World LLM-Integrated Applications with Indirect Prompt Injection}, 2023.
+\end{itemize}
+
+\end{document}
