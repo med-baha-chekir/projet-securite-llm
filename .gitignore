@@ -31,3 +31,6 @@ Thumbs.db
 
 # Remarque : results/ est VERSIONNÉ volontairement.
 # Les résultats bruts sont la preuve du projet (avant / après).
+
+# --- Journaux d exécution (échanges, actions simulées) ---
+logs/

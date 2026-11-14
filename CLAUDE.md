@@ -46,7 +46,7 @@ Règles qui en découlent :
 | Modèle local | Ollama + petit modèle (Llama 3.x 8B ou Mistral 7B, version quantifiée) |
 | API | FastAPI |
 | Interface de démo | Streamlit (ou Gradio) |
-| RAG | ChromaDB + LangChain ou LlamaIndex |
+| RAG | ChromaDB + bibliothèque officielle `ollama` (embeddings `nomic-embed-text`), **sans** LangChain ni LlamaIndex : le texte envoyé au modèle reste entièrement visible et maîtrisé (décision du 14/11/2026) |
 | Tests offensifs | promptfoo (rejeu A/B), garak (scan), PyRIT (optionnel) |
 | Défenses | LLM Guard, NeMo Guardrails ou Llama Guard, Microsoft Presidio, limiteur de débit (slowapi) |
 | Mesure | pandas, matplotlib |
@@ -118,7 +118,7 @@ Chaque scénario est répété **5 fois minimum**. Les résultats bruts sont sau
 ### P2 — Laboratoire (version A)
 - [x] `docker-compose.yml` avec Ollama et le modèle téléchargé
 - [x] Données fictives (`data/`) et canary dans `.env`
-- [ ] Module partagé : client LLM, RAG, outils, journalisation
+- [x] Module partagé : client LLM, RAG, outils, journalisation
 - [ ] Version A : chatbot naïf (secret dans le prompt, outils sans restriction, pas de filtre)
 - [ ] Interface Streamlit permettant de choisir A ou B
 - [ ] README : comment lancer le labo en une commande

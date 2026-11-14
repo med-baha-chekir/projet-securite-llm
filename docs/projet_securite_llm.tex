@@ -304,7 +304,7 @@ Langage & Python & Langage principal de l'application et des tests \\
 Modèle local & Ollama + Llama 3 ou Mistral & Exécuter le LLM sans service externe \\
 API & FastAPI & Exposer le chatbot \\
 Interface & Streamlit ou Gradio & Interface de chat pour la démonstration \\
-RAG & ChromaDB, LangChain ou LlamaIndex & Base documentaire interne fictive \\
+RAG & ChromaDB + client Python \texttt{ollama} (embeddings \texttt{nomic-embed-text}) & Base documentaire interne fictive. LangChain et LlamaIndex ont été étudiés puis écartés : leurs modèles de prompt internes masquent le texte réellement envoyé au modèle, ce qui ajouterait une variable cachée à la comparaison avant / après \\
 \multicolumn{3}{@{}l}{\cellcolor{rougeclair}\textbf{Tests offensifs (red team)}} \\
 Scanner de LLM & garak (NVIDIA) & Scan automatique de vulnérabilités du modèle \\
 Évaluation & promptfoo & Rejouer un jeu d'attaques et comparer A / B \\

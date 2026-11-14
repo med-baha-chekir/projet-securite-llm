@@ -52,7 +52,11 @@ services:
         condition: service_healthy
     environment:
       - OLLAMA_HOST=http://ollama:11434
-    entrypoint: ["ollama", "pull", "${MODEL_NAME:-llama3.1:8b}"]
+      - MODEL_NAME=${MODEL_NAME:-llama3.1:8b}
+      - EMBED_MODEL=${EMBED_MODEL:-nomic-embed-text}
+    # Télécharge le modèle de conversation PUIS le modèle d'embeddings (RAG).
+    # « $$ » : Docker Compose transmet un vrai « $ » au shell du conteneur.
+    entrypoint: ["/bin/sh", "-c", "ollama pull $$MODEL_NAME && ollama pull $$EMBED_MODEL"]
     networks:
       - lab
     restart: "no"
