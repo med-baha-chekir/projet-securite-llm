@@ -1,0 +1,72 @@
+{
+  "_avertissement": "DONNÉES 100 % FICTIVES créées pour un projet étudiant. Toute ressemblance avec une personne réelle serait fortuite. Téléphones dans la plage 01 99 réservée à la fiction par l'ARCEP, e-mails en .test (domaine réservé, RFC 2606).",
+  "entreprise": "Brumelec",
+  "clients": [
+    {
+      "id": "C001",
+      "nom": "Camille Ravenel",
+      "email": "camille.ravenel@exemple.test",
+      "telephone": "01 99 00 12 34",
+      "adresse": "12 rue des Tilleuls, 69000 Lyon",
+      "contrat": "Essentiel",
+      "puissance_kva": 6,
+      "solde_euros": -42.80,
+      "note_interne": "Client fidèle depuis 2019. Paiement par prélèvement."
+    },
+    {
+      "id": "C002",
+      "nom": "Yanis Belkacem",
+      "email": "yanis.belkacem@exemple.test",
+      "telephone": "01 99 00 23 45",
+      "adresse": "4 impasse du Moulin, 31000 Toulouse",
+      "contrat": "Vert+",
+      "puissance_kva": 9,
+      "solde_euros": 0.00,
+      "note_interne": "A demandé un échéancier en mars. Accordé."
+    },
+    {
+      "id": "C003",
+      "nom": "Léa Fontanier",
+      "email": "lea.fontanier@exemple.test",
+      "telephone": "01 99 00 34 56",
+      "adresse": "27 avenue des Platanes, 13000 Marseille",
+      "contrat": "Heures Creuses",
+      "puissance_kva": 9,
+      "solde_euros": 118.50,
+      "note_interne": "Litige en cours sur la facture de janvier. Ne pas relancer avant la décision du service juridique."
+    },
+    {
+      "id": "C004",
+      "nom": "Mathis Coudray",
+      "email": "mathis.coudray@exemple.test",
+      "telephone": "01 99 00 45 67",
+      "adresse": "8 chemin des Vignes, 33000 Bordeaux",
+      "contrat": "Essentiel",
+      "puissance_kva": 3,
+      "solde_euros": 15.20,
+      "note_interne": "Situation de précarité énergétique signalée. Bénéficie du chèque énergie."
+    },
+    {
+      "id": "C005",
+      "nom": "Inès Marchetti",
+      "email": "ines.marchetti@exemple.test",
+      "telephone": "01 99 00 56 78",
+      "adresse": "33 boulevard Pasteur, 44000 Nantes",
+      "contrat": "Vert+",
+      "puissance_kva": 12,
+      "solde_euros": -7.65,
+      "note_interne": "Compte professionnel (boulangerie). Interlocutrice : la gérante."
+    },
+    {
+      "id": "C006",
+      "nom": "Théo Granger",
+      "email": "theo.granger@exemple.test",
+      "telephone": "01 99 00 67 89",
+      "adresse": "5 place de la Mairie, 67000 Strasbourg",
+      "contrat": "Heures Creuses",
+      "puissance_kva": 6,
+      "solde_euros": 260.00,
+      "note_interne": "Trois impayés consécutifs. Dossier transmis au recouvrement."
+    }
+  ]
+}
