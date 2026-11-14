@@ -2,8 +2,10 @@
 Configuration du laboratoire, lue à UN SEUL endroit.
 
 Les valeurs viennent des variables d'environnement :
-- dans Docker, elles sont fournies par docker-compose (fichier .env) ;
+- dans Docker, elles sont fournies par docker-compose (fichier .env, facultatif) ;
 - sur ta machine, elles sont lues directement dans le fichier .env.
+Sans fichier .env, les valeurs par défaut ci-dessous s'appliquent.
+Le canary, lui, est lu dans secrets/canary.txt (voir lire_canary).
 
 Comme A et B utilisent cette même fonction, ils reçoivent exactement
 les mêmes paramètres (modèle, température, graine...).
@@ -47,9 +49,22 @@ class Config:
     dossier_logs: Path
 
 
+def lire_canary(fichier: Path = RACINE / "secrets" / "canary.txt") -> str:
+    """
+    Le canary est lu dans secrets/canary.txt (créé automatiquement par le
+    service Docker « init-canary »). Une variable CANARY_SECRET, si elle
+    existe, est prioritaire (utile pour les tests).
+    """
+    if os.environ.get("CANARY_SECRET"):
+        return os.environ["CANARY_SECRET"]
+    if fichier.exists():
+        return fichier.read_text(encoding="utf-8").strip()
+    return ""
+
+
 def charger_config(fichier_env: Path = RACINE / ".env") -> Config:
     """Construit la configuration à partir de l'environnement."""
-    charger_fichier_env(fichier_env)
+    charger_fichier_env(fichier_env)  # facultatif : valeurs par défaut sinon
     return Config(
         modele=os.environ.get("MODEL_NAME", "llama3.1:8b"),
         modele_embeddings=os.environ.get("EMBED_MODEL", "nomic-embed-text"),
@@ -57,7 +72,7 @@ def charger_config(fichier_env: Path = RACINE / ".env") -> Config:
         temperature=float(os.environ.get("LLM_TEMPERATURE", "0.7")),
         graine=int(os.environ.get("LLM_SEED", "42")),
         repetitions=int(os.environ.get("N_REPETITIONS", "5")),
-        canary=os.environ.get("CANARY_SECRET", ""),
+        canary=lire_canary(),
         dossier_documents=RACINE / "data" / "documents",
         fichier_clients=RACINE / "data" / "customers.json",
         dossier_logs=RACINE / "logs",

@@ -81,15 +81,19 @@ def test_canary_unique_a_chaque_generation():
     assert len(canaries) == 100
 
 
-def test_initialisation_cree_env_et_conserve_le_canary(tmp_path):
-    # On travaille dans un dossier temporaire pour ne pas toucher au vrai .env
-    exemple = tmp_path / ".env.example"
-    exemple.write_text("MODEL_NAME=llama3.1:8b\nCANARY_SECRET=\n", encoding="utf-8")
-    env = tmp_path / ".env"
+def test_initialisation_cree_le_fichier_et_conserve_le_canary(tmp_path):
+    # Dossier temporaire : on ne touche pas au vrai secrets/canary.txt
+    fichier = tmp_path / "secrets" / "canary.txt"  # le dossier n'existe pas encore
 
-    premier = initialiser_canary(env, exemple)
-    second = initialiser_canary(env, exemple)
+    premier = initialiser_canary(fichier)
+    second = initialiser_canary(fichier)
 
     assert FORMAT_CANARY.match(premier)
     assert second == premier  # jamais remplacé une fois créé
-    assert "MODEL_NAME=llama3.1:8b" in env.read_text(encoding="utf-8")
+    assert fichier.read_text(encoding="utf-8").strip() == premier
+
+
+def test_fichier_canary_invalide_est_regenere(tmp_path):
+    fichier = tmp_path / "canary.txt"
+    fichier.write_text("n'importe quoi\n", encoding="utf-8")
+    assert FORMAT_CANARY.match(initialiser_canary(fichier))

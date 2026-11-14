@@ -13,7 +13,7 @@ import ollama
 import pytest
 
 from app.shared import llm
-from app.shared.config import charger_config
+from app.shared.config import charger_config, lire_canary
 from app.shared.journal import journaliser
 from app.shared.outils import SCHEMAS_OUTILS, BoiteOutils
 from app.shared.rag import BaseDocumentaire, decouper_document
@@ -47,6 +47,24 @@ def test_variable_d_environnement_prioritaire_sur_le_fichier(tmp_path, monkeypat
     env = tmp_path / ".env"
     env.write_text("MODEL_NAME=modele-fichier\n", encoding="utf-8")
     assert charger_config(env).modele == "modele-docker"
+
+
+def test_canary_lu_dans_le_fichier_secrets(tmp_path, monkeypatch):
+    monkeypatch.delenv("CANARY_SECRET", raising=False)
+    fichier = tmp_path / "canary.txt"
+    fichier.write_text("CANARY-abcdefghijkl\n", encoding="utf-8")
+    assert lire_canary(fichier) == "CANARY-abcdefghijkl"
+
+
+def test_canary_vide_si_aucun_fichier(tmp_path, monkeypatch):
+    monkeypatch.delenv("CANARY_SECRET", raising=False)
+    assert lire_canary(tmp_path / "absent.txt") == ""
+
+
+def test_config_fonctionne_sans_fichier_env(tmp_path, monkeypatch):
+    # Ordinateur neuf : pas de .env -> valeurs par défaut
+    monkeypatch.delenv("MODEL_NAME", raising=False)
+    assert charger_config(tmp_path / "absent.env").modele == "llama3.1:8b"
 
 
 # ---------- journal ----------

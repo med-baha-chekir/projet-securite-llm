@@ -35,8 +35,6 @@ fausserait la mesure.
 
 ## Le canary (secret de test)
 
-Il n'est **pas** dans ce dossier. Il est généré dans `.env` (jamais versionné) par :
-
-```bash
-python evaluation/init_canary.py
-```
+Il n'est **pas** dans ce dossier. Il est généré automatiquement au premier
+`docker compose up` dans `secrets/canary.txt` (jamais versionné), par le script
+`evaluation/init_canary.py`.

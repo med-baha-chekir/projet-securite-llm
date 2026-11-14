@@ -33,9 +33,9 @@ Règles qui en découlent :
 - Modèle **local uniquement** (Ollama). Aucun appel à une API LLM externe pour l'application testée.
 - Aucune attaque contre un service tiers, un site réel ou un système sans autorisation.
 - **Données 100 % fictives** : faux clients, faux documents, faux secrets. Aucune donnée personnelle réelle.
-- Le secret de test est un **canary** fictif, unique et facile à détecter dans les réponses (ex. `CANARY-` suivi d'un identifiant aléatoire), stocké dans un fichier `.env` non versionné.
+- Le secret de test est un **canary** fictif, unique et facile à détecter dans les réponses (ex. `CANARY-` suivi d'un identifiant aléatoire), stocké dans `secrets/canary.txt` non versionné. Il est généré automatiquement par le service Docker `init-canary` et monté en lecture seule dans les conteneurs (décision du 14/11/2026, pour que `docker compose up` suffise).
 - Le laboratoire tourne dans **Docker**, sur un réseau interne, sans exposition publique.
-- Ne jamais committer de clé, mot de passe ou fichier `.env`.
+- Ne jamais committer de clé, mot de passe, fichier `.env` ou dossier `secrets/`.
 
 ## 4. Stack technique
 
@@ -123,7 +123,7 @@ Chaque scénario est répété **5 fois minimum**. Les résultats bruts sont sau
 - [x] Module partagé : client LLM, RAG, outils, journalisation
 - [x] Version A : chatbot naïf (secret dans le prompt, outils sans restriction, pas de filtre)
 - [x] Interface Streamlit permettant de choisir A ou B
-- [ ] README : comment lancer le labo en une commande
+- [x] README : comment lancer le labo en une commande
 
 ### P3 — Campagne AVANT
 - [ ] `attacks/scenarios.yaml` et `attacks/benign.yaml`

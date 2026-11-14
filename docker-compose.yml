@@ -61,22 +61,41 @@ services:
       - lab
     restart: "no"
 
+  # --- Génération automatique du canary au premier lancement ---
+  # Écrit secrets/canary.txt s'il n'existe pas encore, puis s'arrête.
+  # Un canary existant n'est jamais remplacé.
+  init-canary:
+    build: .
+    image: labo-llm-app
+    container_name: llm-init-canary
+    command: ["python", "evaluation/init_canary.py"]
+    user: root                             # seule exception : doit pouvoir créer secrets/ sur la machine
+    volumes:
+      - ./secrets:/projet/secrets
+    network_mode: none                     # aucun réseau : il n'en a pas besoin
+    restart: "no"
+
   # --- Version A : chatbot VOLONTAIREMENT vulnérable ---
   app-vulnerable:
     build: .
     image: labo-llm-app
     container_name: llm-app-vulnerable
     command: ["uvicorn", "app.vulnerable.main:app", "--host", "0.0.0.0", "--port", "8000"]
-    env_file: .env                         # modèle, température, graine, canary
+    env_file:
+      - path: .env                         # réglages facultatifs (modèle, température, graine)
+        required: false
     environment:
       - OLLAMA_URL=http://ollama:11434     # dans le labo, Ollama s'appelle « ollama »
     volumes:
       - ./logs:/projet/logs                # journaux lisibles depuis ta machine
+      - ./secrets:/projet/secrets:ro       # canary, en LECTURE SEULE
     networks:
       - lab                                # réseau interne UNIQUEMENT : pas d'Internet
     depends_on:
       ollama-init:
         condition: service_completed_successfully   # attend que les modèles soient téléchargés
+      init-canary:
+        condition: service_completed_successfully   # attend que le canary existe
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/sante')"]
       interval: 10s
@@ -91,7 +110,11 @@ services:
     container_name: llm-ui
     command: ["streamlit", "run", "app/ui/streamlit_app.py",
               "--server.port=8501", "--server.address=0.0.0.0"]
-    env_file: .env                         # le canary sert uniquement à afficher l'alerte de fuite
+    env_file:
+      - path: .env
+        required: false
+    volumes:
+      - ./secrets:/projet/secrets:ro       # le canary sert uniquement à afficher l'alerte de fuite
     environment:
       - URL_APP_A=http://app-vulnerable:8000
       - URL_APP_B=http://app-secure:8000

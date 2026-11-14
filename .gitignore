@@ -34,3 +34,6 @@ Thumbs.db
 
 # --- Journaux d exécution (échanges, actions simulées) ---
 logs/
+
+# --- Secret de test (canary), généré automatiquement ---
+secrets/
