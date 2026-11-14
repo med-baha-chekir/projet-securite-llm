@@ -84,6 +84,33 @@ services:
       retries: 12
     restart: unless-stopped
 
+  # --- Interface de démonstration (Streamlit) : http://localhost:8501 ---
+  ui:
+    build: .
+    image: labo-llm-app
+    container_name: llm-ui
+    command: ["streamlit", "run", "app/ui/streamlit_app.py",
+              "--server.port=8501", "--server.address=0.0.0.0"]
+    env_file: .env                         # le canary sert uniquement à afficher l'alerte de fuite
+    environment:
+      - URL_APP_A=http://app-vulnerable:8000
+      - URL_APP_B=http://app-secure:8000
+      - STREAMLIT_BROWSER_GATHER_USAGE_STATS=false   # pas de statistiques envoyées à Streamlit
+      - STREAMLIT_SERVER_HEADLESS=true
+      # Adresse fixée : sinon Streamlit interroge un service Internet pour
+      # découvrir l'IP publique de la machine (connexion sortante inutile)
+      - STREAMLIT_BROWSER_SERVER_ADDRESS=localhost
+      - STREAMLIT_CLIENT_TOOLBAR_MODE=minimal         # masque le bouton « Deploy »
+    ports:
+      - "127.0.0.1:8501:8501"              # accessible UNIQUEMENT depuis ta machine
+    networks:
+      - lab                                # pour parler aux versions A et B
+      - front                              # pour être joignable depuis ton navigateur
+    depends_on:
+      app-vulnerable:
+        condition: service_healthy
+    restart: unless-stopped
+
 networks:
   # Réseau INTERNE du labo : aucun accès à Internet.
   # Les applications A et B seront branchées uniquement ici.
@@ -92,6 +119,10 @@ networks:
   # Réseau avec accès Internet, réservé à Ollama pour télécharger
   # le modèle. Les applications n'y seront jamais connectées.
   telechargement:
+  # Réseau de l'interface. Docker ne peut pas ouvrir de port vers un réseau
+  # « internal » : l'interface a donc besoin de ce réseau pour être joignable.
+  # Compromis assumé : seule l'interface (sans secret propre) y est branchée.
+  front:
 
 volumes:
   ollama-data:

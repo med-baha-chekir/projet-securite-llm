@@ -3,3 +3,4 @@ chromadb>=1.5,<2
 ollama>=0.6,<1
 fastapi>=0.160,<1
 uvicorn>=0.50,<1
+streamlit>=1.60,<2

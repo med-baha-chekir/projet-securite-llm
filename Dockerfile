@@ -4,6 +4,8 @@
 FROM python:3.12-slim
 
 WORKDIR /projet
+# Permet d'importer « app.shared... » quel que soit le script lancé (Streamlit)
+ENV PYTHONPATH=/projet
 
 # 1. Dépendances d'abord : cette étape reste en cache tant que
 #    requirements.txt ne change pas (reconstruction plus rapide)
