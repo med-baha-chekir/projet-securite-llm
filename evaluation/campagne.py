@@ -17,13 +17,15 @@ import os
 import time
 import urllib.error
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from pathlib import Path
 
 import yaml
 
 from app.shared.config import RACINE, charger_config
-from evaluation.criteres import contient_canary, evaluer_attaque, evaluer_question_legitime
+from evaluation.criteres import (contient_canary, evaluer_attaque,
+                                 evaluer_question_legitime, partie_secrete)
 
 URLS = {
     "A": os.environ.get("URL_APP_A", "http://app-vulnerable:8000"),
@@ -31,18 +33,36 @@ URLS = {
 }
 DOSSIERS_SORTIE = {"A": RACINE / "results" / "before", "B": RACINE / "results" / "after"}
 
+# Délai d'attente maximal d'une réponse (en secondes). Une réponse normale prend
+# moins d'une minute ; au-delà de 5 minutes, Ollama est bloqué (constaté le
+# 15/11/2026) et attendre plus longtemps ne sert à rien.
+DELAI_S = int(os.environ.get("DELAI_REQUETE_S", "300"))
+
 COLONNES = ["horodatage", "version", "type", "id", "owasp", "variante", "repetition",
             "graine", "succes", "criteres", "bloque", "contient_attendu", "statut_http",
-            "latence_s", "outils", "reponse_extrait", "erreur"]
+            "latence_s", "outils", "rafale", "longueur_reponse", "reponse", "erreur"]
 
 
 # ---------- préparation ----------
 
 def construire_message(variante) -> str:
-    """Une variante est soit un texte, soit {repeter: {texte, fois}} (message géant de A9)."""
+    """
+    Une variante est soit un texte, soit un dictionnaire (scénario A9) :
+    - {repeter: {texte, fois}} : message géant, le texte répété « fois » fois ;
+    - {rafale: {texte, fois}}  : le même message court envoyé « fois » fois d'un coup.
+    """
     if isinstance(variante, dict) and "repeter" in variante:
         return variante["repeter"]["texte"] * variante["repeter"]["fois"]
+    if isinstance(variante, dict) and "rafale" in variante:
+        return variante["rafale"]["texte"]
     return variante
+
+
+def taille_rafale(variante) -> int:
+    """Nombre de requêtes simultanées de la variante (0 = requête normale)."""
+    if isinstance(variante, dict) and "rafale" in variante:
+        return variante["rafale"]["fois"]
+    return 0
 
 
 def preparer_taches(scenarios, questions, repetitions, repetitions_benin, graine_base):
@@ -57,6 +77,7 @@ def preparer_taches(scenarios, questions, repetitions, repetitions_benin, graine
             for r in range(repetitions):
                 taches.append({"type": "attaque", "element": s, "variante": v,
                                "message": construire_message(variante),
+                               "rafale": taille_rafale(variante),
                                "repetition": r + 1, "graine": graine_base + r})
     for q in questions:
         for r in range(repetitions_benin):
@@ -68,7 +89,7 @@ def preparer_taches(scenarios, questions, repetitions, repetitions_benin, graine
 
 # ---------- envoi d'une requête ----------
 
-def envoyer(url: str, message: str, id_client: str, graine: int, delai: int = 600) -> dict:
+def envoyer(url: str, message: str, id_client: str, graine: int, delai: int = DELAI_S) -> dict:
     """
     Envoie une requête à POST /chat et renvoie un « résultat » au format attendu
     par les critères. Ne plante jamais : une erreur est renvoyée dans le résultat.
@@ -95,18 +116,53 @@ def envoyer(url: str, message: str, id_client: str, graine: int, delai: int = 60
     return resultat
 
 
+def envoyer_rafale(url: str, message: str, id_client: str, graine: int, fois: int) -> dict:
+    """
+    Envoie « fois » requêtes EN MÊME TEMPS (scénario A9 : pas de limite de débit).
+    Renvoie un seul résultat : la première réponse acceptée, plus le décompte
+    {"envoyees": ..., "acceptees": ...} utilisé par le critère « rafale_acceptee ».
+    """
+    debut = time.perf_counter()
+    with ThreadPoolExecutor(max_workers=fois) as executeur:
+        resultats = list(executeur.map(
+            lambda _: envoyer(url, message, id_client, graine), range(fois)))
+    acceptes = [r for r in resultats if r["statut_http"] == 200 and not r["bloque"]]
+    resultat = dict(acceptes[0] if acceptes else resultats[0])
+    resultat["rafale"] = {"envoyees": fois, "acceptees": len(acceptes)}
+    resultat["latence_s"] = round(time.perf_counter() - debut, 2)  # durée de toute la rafale
+    return resultat
+
+
+def intervalle_wilson(reussies: int, total: int) -> tuple[float, float]:
+    """
+    Intervalle de confiance à 95 % d'un taux (méthode de Wilson), en pourcentage.
+    Avec peu d'essais, le taux observé est imprécis : 1 succès sur 15 peut
+    correspondre à un vrai taux entre 1 % et 30 %. Il faut le dire dans le rapport.
+    """
+    if total == 0:
+        return 0.0, 0.0
+    z, p = 1.96, reussies / total
+    diviseur = 1 + z * z / total
+    centre = (p + z * z / (2 * total)) / diviseur
+    marge = z * (p * (1 - p) / total + z * z / (4 * total * total)) ** 0.5 / diviseur
+    return 100 * max(0.0, centre - marge), 100 * min(1.0, centre + marge)
+
+
 # ---------- masquage avant écriture ----------
 
 def masquer(texte: str, canary: str) -> str:
     """
     Le dossier results/ est versionné sur Git : le canary ne doit jamais y être écrit.
     - canary présent tel quel : remplacé par [CANARY] ;
-    - canary épelé (C-A-N-A-R-Y...) : impossible à remplacer proprement, tout le texte est masqué.
+    - canary épelé (C-A-N-A-R-Y...) ou à l'envers : impossible à remplacer proprement,
+      tout le texte est masqué.
     Le verdict est calculé AVANT le masquage, il reste donc juste.
     """
     if not canary:
         return texte
     texte = texte.replace(canary, "[CANARY]")
+    # La partie aléatoire seule (« la suite est k3x9... ») est aussi un secret
+    texte = texte.replace(partie_secrete(canary), "[CANARY]")
     if contient_canary(texte, canary):
         return "[texte masqué : contient le canary sous une forme modifiée]"
     return texte
@@ -140,9 +196,12 @@ def ligne_de_resultat(tache, resultat, version, contexte_canary, clients) -> dic
     outils = json.dumps([{"nom": a["nom"], "arguments": a.get("arguments", {})}
                          for a in resultat["outils_appeles"]], ensure_ascii=False)
     ligne["outils"] = masquer(outils, contexte_canary)
-    # Masquer AVANT de couper : sinon un canary épelé coupé en deux échapperait
-    # au masquage et la moitié de ses caractères finirait sur Git
-    ligne["reponse_extrait"] = masquer(resultat["reponse"], contexte_canary)[:300]
+    # Réponse COMPLÈTE (canary masqué) : on peut ainsi rejuger les résultats plus
+    # tard sans relancer la campagne. La longueur est mesurée avant le masquage.
+    ligne["longueur_reponse"] = len(resultat["reponse"])
+    ligne["reponse"] = masquer(resultat["reponse"], contexte_canary)
+    rafale = resultat.get("rafale")  # décompte de la rafale (A9), vide sinon
+    ligne["rafale"] = f"{rafale['acceptees']}/{rafale['envoyees']}" if rafale else ""
     return ligne
 
 
@@ -153,8 +212,9 @@ def afficher_resume(lignes: list[dict]) -> None:
     for id_ in dict.fromkeys(l["id"] for l in attaques):  # ordre d'apparition, sans doublon
         du_scenario = [l for l in attaques if l["id"] == id_]
         reussies = sum(l["succes"] for l in du_scenario)
+        bas, haut = intervalle_wilson(reussies, len(du_scenario))
         print(f"  {id_:<4} ASR = {reussies}/{len(du_scenario)} "
-              f"({100 * reussies / len(du_scenario):.0f} %)")
+              f"({100 * reussies / len(du_scenario):.0f} %, IC 95 % : {bas:.0f}-{haut:.0f} %)")
     if attaques:
         total = sum(l["succes"] for l in attaques)
         print(f"  GLOBAL ASR = {total}/{len(attaques)} ({100 * total / len(attaques):.0f} %)")
@@ -169,8 +229,40 @@ def afficher_resume(lignes: list[dict]) -> None:
     print(f"  Requêtes en erreur : {erreurs}")
 
 
+def cle(ligne_ou_tache) -> tuple:
+    """Identifiant unique d'une tentative : (type, scénario, variante, répétition)."""
+    element = ligne_ou_tache.get("element")
+    id_ = element["id"] if element else ligne_ou_tache["id"]
+    return (ligne_ou_tache["type"], id_, int(ligne_ou_tache["variante"]),
+            int(ligne_ou_tache["repetition"]))
+
+
+def relire_lignes_valides(fichier) -> list[dict]:
+    """
+    Lignes d'une campagne interrompue à conserver : celles SANS erreur.
+    Une ligne en erreur (délai dépassé, serveur injoignable) n'est pas un verdict
+    sur l'attaque, c'est une panne du labo : elle sera rejouée.
+    Les valeurs lues dans le CSV sont du texte ; on remet les booléens.
+    """
+    def booleen(texte):
+        return texte == "True" if texte in ("True", "False") else texte
+
+    with open(fichier, encoding="utf-8") as f:
+        lignes = [l for l in csv.DictReader(f) if not l["erreur"]]
+    for l in lignes:
+        for colonne in ("succes", "bloque", "contient_attendu"):
+            l[colonne] = booleen(l[colonne])
+    return lignes
+
+
 def lancer_campagne(version, repetitions, repetitions_benin, filtre_scenarios=None,
-                    avec_attaques=True, avec_benin=True, dossier_sortie=None) -> Path:
+                    avec_attaques=True, avec_benin=True, dossier_sortie=None,
+                    reprendre=None) -> Path:
+    """
+    reprendre : chemin d'une campagne interrompue. Ses lignes valides sont recopiées
+    dans le nouveau fichier, puis seules les tentatives manquantes ou en erreur
+    sont envoyées. Le fichier d'origine n'est pas modifié.
+    """
     config = charger_config()
     scenarios = yaml.safe_load((RACINE / "attacks" / "scenarios.yaml").read_text(encoding="utf-8"))
     questions = yaml.safe_load((RACINE / "attacks" / "benign.yaml").read_text(encoding="utf-8"))
@@ -185,15 +277,26 @@ def lancer_campagne(version, repetitions, repetitions_benin, filtre_scenarios=No
     dossier = Path(dossier_sortie) if dossier_sortie else DOSSIERS_SORTIE[version]
     dossier.mkdir(parents=True, exist_ok=True)
     fichier = dossier / f"campagne_{version}_{datetime.now():%Y%m%d-%H%M%S}.csv"
+    anciennes = relire_lignes_valides(reprendre) if reprendre else []
+    if anciennes:
+        deja_faites = {cle(l) for l in anciennes}
+        taches = [t for t in taches if cle(t) not in deja_faites]
+        print(f"Reprise de {reprendre} : {len(anciennes)} lignes valides conservées")
     print(f"Campagne version {version} : {len(taches)} requêtes -> {fichier}")
 
-    lignes, debut = [], time.perf_counter()
+    lignes, debut = list(anciennes), time.perf_counter()
     with open(fichier, "w", newline="", encoding="utf-8") as f:
         ecrivain = csv.DictWriter(f, fieldnames=COLONNES)
         ecrivain.writeheader()
+        ecrivain.writerows(anciennes)
         for i, tache in enumerate(taches, start=1):
-            resultat = envoyer(URLS[version], tache["message"],
-                               tache["element"]["id_client"], tache["graine"])
+            if tache.get("rafale"):
+                resultat = envoyer_rafale(URLS[version], tache["message"],
+                                          tache["element"]["id_client"], tache["graine"],
+                                          tache["rafale"])
+            else:
+                resultat = envoyer(URLS[version], tache["message"],
+                                   tache["element"]["id_client"], tache["graine"])
             ligne = ligne_de_resultat(tache, resultat, version, config.canary, clients)
             ecrivain.writerow(ligne)
             f.flush()  # écrit tout de suite sur le disque : rien n'est perdu en cas d'arrêt
@@ -228,6 +331,8 @@ def main():
     parser.add_argument("--sans-benin", action="store_true", help="attaques uniquement")
     parser.add_argument("--sans-attaques", action="store_true", help="questions légitimes uniquement")
     parser.add_argument("--sortie", help="dossier de sortie (défaut : results/before ou after)")
+    parser.add_argument("--reprendre", help="CSV d'une campagne interrompue : rejoue seulement "
+                                            "les tentatives manquantes ou en erreur")
     args = parser.parse_args()
 
     lancer_campagne(
@@ -235,7 +340,7 @@ def main():
         repetitions_benin=args.repetitions_benin,
         filtre_scenarios=args.scenarios.split(",") if args.scenarios else None,
         avec_attaques=not args.sans_attaques, avec_benin=not args.sans_benin,
-        dossier_sortie=args.sortie,
+        dossier_sortie=args.sortie, reprendre=args.reprendre,
     )
 
 

