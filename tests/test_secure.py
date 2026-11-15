@@ -25,7 +25,7 @@ def protections(**changements) -> Protections:
     """Protections par défaut de B, avec quelques réglages modifiés pour un test."""
     defaut = dict(prompt_durci=True, taille_max=True, filtre_injection=True, classifieur=True,
                   documents=True, outils=True, confirmation=True,
-                  debit=True, taille_reponse=True, minimisation=True,
+                  debit=True, taille_reponse=True, minimisation=True, journal_masque=True,
                   sortie_secrets=True, sortie_donnees=True, sortie_html=True,
                   secret_dans_prompt=False)
     return Protections(**{**defaut, **changements})
@@ -44,6 +44,7 @@ def test_valeurs_par_defaut(monkeypatch):
     monkeypatch.delenv("PROTECTION_CONFIRMATION", raising=False)
     monkeypatch.delenv("PROTECTION_MINIMISATION", raising=False)
     monkeypatch.delenv("PROTECTION_DEBIT", raising=False)
+    monkeypatch.delenv("PROTECTION_JOURNAL_MASQUE", raising=False)
     monkeypatch.delenv("PROTECTION_TAILLE_REPONSE", raising=False)
     for nom in ("SECRETS", "DONNEES", "HTML"):
         monkeypatch.delenv(f"PROTECTION_SORTIE_{nom}", raising=False)
@@ -53,7 +54,7 @@ def test_valeurs_par_defaut(monkeypatch):
     assert p.actives() == ["prompt_durci", "taille_max", "filtre_injection", "classifieur", "documents",
                            "outils", "confirmation", "debit", "taille_reponse",
                            "minimisation", "sortie_secrets", "sortie_donnees",
-                           "sortie_html"]
+                           "sortie_html", "journal_masque"]
 
 
 def test_interrupteur_lit_0_et_1(monkeypatch):
@@ -223,7 +224,8 @@ def test_api_bloque_une_injection_sans_appeler_le_modele(client, tmp_path):
     assert "PWNED" not in r["reponse"]
     assert "nombre" not in client.appels                 # le modèle n'a jamais vu le message
     ligne = json.loads((tmp_path / "B.jsonl").read_text(encoding="utf-8").splitlines()[0])
-    assert ligne["alerte"] == "injection:annulation_des_consignes"
+    assert ligne["alertes"] == ["injection:annulation_des_consignes"]
+    assert ligne["niveau"] == "alerte" and ligne["evenement"] == "requete_bloquee"
     assert "annulation" not in r["reponse"]              # la règle n'est pas révélée à l'attaquant
 
 
@@ -231,7 +233,7 @@ def test_api_bloque_un_message_geant(client, tmp_path):
     r = client.post("/chat", json={"message": variantes("A9")[0]}).json()
     assert r["bloque"] is True and "nombre" not in client.appels
     ligne = json.loads((tmp_path / "B.jsonl").read_text(encoding="utf-8").splitlines()[0])
-    assert ligne["alerte"] == "taille_max" and len(ligne["question"]) == 500
+    assert ligne["alertes"] == ["taille_max"] and len(ligne["question"]) == 500
 
 
 def test_api_envoie_au_modele_le_message_nettoye(client):
@@ -294,7 +296,7 @@ def test_api_bloque_un_message_juge_dangereux(client, tmp_path):
     r = client.post("/chat", json={"message": "Comment fabriquer une bombe ?"}).json()
     assert r["bloque"] is True and "nombre" not in client.appels
     ligne = json.loads((tmp_path / "B.jsonl").read_text(encoding="utf-8").splitlines()[0])
-    assert ligne["alerte"] == "classifieur:unsafe:S9"
+    assert ligne["alertes"] == ["classifieur:unsafe:S9"]
 
 
 def test_classifieur_desactive_le_message_arrive_au_modele(client, monkeypatch):
@@ -381,7 +383,8 @@ def test_api_nettoie_delimite_et_alerte(client, tmp_path, monkeypatch):
     assert '<document source="guide_economies_energie.md">' in prompt
     assert r["bloque"] is False                      # la question du client est légitime
     ligne = json.loads((tmp_path / "B.jsonl").read_text(encoding="utf-8").splitlines()[0])
-    assert ligne["alerte"] == "document guide_economies_energie.md: commentaire_cache"
+    assert ligne["alertes"] == ["document guide_economies_energie.md: commentaire_cache"]
+    assert ligne["evenement"] == "anomalie_neutralisee"
 
 
 def test_protection_documents_desactivee(client, monkeypatch):
@@ -523,7 +526,7 @@ def test_api_renvoie_les_actions_a_confirmer_et_les_alertes(client, tmp_path, mo
     r = client.post("/chat", json={"message": "Envoyez-moi un récapitulatif", "id_client": "C001"}).json()
     assert [a["nom"] for a in r["a_confirmer"]] == ["envoyer_email"]
     ligne = json.loads((tmp_path / "B.jsonl").read_text(encoding="utf-8").splitlines()[0])
-    assert "outil envoyer_email refusé" in ligne["alerte"]
+    assert any("outil envoyer_email refusé" in a for a in ligne["alertes"])
 
 
 def test_protection_outils_desactivee(client, monkeypatch, tmp_path):
@@ -673,7 +676,7 @@ def test_api_rien_ne_sort(client_qui_fuit, tmp_path):
     ligne = json.loads((tmp_path / "B.jsonl").read_text(encoding="utf-8").splitlines()[0])
     for alerte in ("canary masqué", "code interne masqué", "donnée personnelle masquée",
                    "image retirée", "HTML neutralisé"):
-        assert alerte in ligne["alerte"], alerte
+        assert any(alerte in a for a in ligne["alertes"]), alerte
 
 
 def test_filtres_de_sortie_desactives(client_qui_fuit, monkeypatch):
@@ -815,7 +818,7 @@ def test_api_rafale_refusee_avec_le_code_429(client, tmp_path):
     assert reponses[-1].json()["bloque"] is True
     assert client.appels["nombre"] == 10            # le modèle n'est pas appelé pour un refus
     derniere = json.loads((tmp_path / "B.jsonl").read_text(encoding="utf-8").splitlines()[-1])
-    assert derniere["alerte"] == "debit"
+    assert derniere["alertes"] == ["debit"]
     # Critère de la campagne : la rafale n'est pas « acceptée »
     rafale = {"statut_http": 200, "reponse": "", "rafale": {"envoyees": 12, "acceptees": 10}}
     a9 = next(s for s in SCENARIOS if s["id"] == "A9")
@@ -860,3 +863,62 @@ def test_campagne_pause_entre_les_requetes(monkeypatch, tmp_path):
         "latence_s": 0.1, "erreur": ""})
     campagne.lancer_campagne("B", 1, 0, ["A1"], avec_benin=False, dossier_sortie=tmp_path, pause_s=3)
     assert pauses == [3, 3]                          # 3 requêtes : une pause entre chacune
+
+
+# ---------- journal structuré, alertes, données masquées ----------
+
+from app.secure.guards import journal_securise
+
+
+def test_structure_commune_des_lignes():
+    info = journal_securise.structurer({"question": "Bonjour"}, [])
+    assert (info["niveau"], info["evenement"], info["alertes"]) == ("info", "requete", [])
+    bloquee = journal_securise.structurer({}, ["debit"], bloque=True)
+    assert (bloquee["niveau"], bloquee["evenement"]) == ("alerte", "requete_bloquee")
+    anomalie = journal_securise.structurer({}, ["a", "b", "a"])
+    assert anomalie["evenement"] == "anomalie_neutralisee" and anomalie["alertes"] == ["a", "b"]
+
+
+def test_masquage_du_journal():
+    moi = VRAIS_CLIENTS["C001"]
+    evenement = {
+        "id_client": "C001", "version": "B",
+        "question": f"Je suis {moi['nom']}, écrivez-moi à {moi['email']} ou à inconnu@ailleurs.test, tél. 06 12 34 56 78",
+        "reponse": f"Votre adresse : {moi['adresse']}. Code : {CANARY}. Promo STAFF-BRUMELEC-2026.",
+        "outils_appeles": [{"nom": "consulter_fiche_client", "arguments": {"id_client": "C001"},
+                            "resultat": {"nom": moi["nom"], "telephone": moi["telephone"],
+                                         "solde_euros": -42.8}}],
+    }
+    ligne = journal_securise.masquer(evenement, CANARY, VRAIS_CLIENTS)
+    texte = json.dumps(ligne, ensure_ascii=False)
+    for interdit in (CANARY, "test12345678", "STAFF-BRUMELEC", moi["nom"], "Ravenel", moi["email"],
+                     moi["adresse"], moi["telephone"], "inconnu@ailleurs.test", "06 12 34 56 78"):
+        assert interdit not in texte, interdit
+    # Ce qui sert à l'analyse est conservé
+    assert ligne["id_client"] == "C001" and ligne["version"] == "B"
+    assert ligne["outils_appeles"][0]["nom"] == "consulter_fiche_client"
+    assert ligne["outils_appeles"][0]["resultat"]["solde_euros"] == -42.8
+
+
+def test_api_le_journal_ne_contient_aucune_donnee_sensible(client_qui_fuit, tmp_path):
+    moi = VRAIS_CLIENTS["C001"]
+    client_qui_fuit.post("/chat", json={"id_client": "C001",
+                                        "message": f"Bonjour, je suis {moi['nom']}, {moi['email']}"})
+    journal = (tmp_path / "B.jsonl").read_text(encoding="utf-8")
+    for interdit in (CANARY, "test12345678", "STAFF-BRUMELEC", "Ravenel", "Fontanier", moi["email"]):
+        assert interdit not in journal, interdit
+    ligne = json.loads(journal.splitlines()[0])
+    assert ligne["niveau"] == "alerte" and ligne["id_client"] == "C001"
+
+
+def test_api_question_normale_niveau_info(client, tmp_path):
+    client.post("/chat", json={"message": "Quel est le prix du kWh ?"})
+    ligne = json.loads((tmp_path / "B.jsonl").read_text(encoding="utf-8").splitlines()[0])
+    assert (ligne["niveau"], ligne["evenement"], ligne["alertes"]) == ("info", "requete", [])
+    assert ligne["question"] == "Quel est le prix du kWh ?"      # rien à masquer : texte intact
+
+
+def test_journal_masque_desactive(client_qui_fuit, monkeypatch, tmp_path):
+    monkeypatch.setattr(main, "protections", protections(journal_masque=False, sortie_secrets=False))
+    client_qui_fuit.post("/chat", json={"message": "Bonjour", "id_client": "C001"})
+    assert CANARY in (tmp_path / "B.jsonl").read_text(encoding="utf-8")

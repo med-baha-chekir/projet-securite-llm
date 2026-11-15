@@ -14,7 +14,8 @@ pour A : les deux versions ne diffèrent QUE par les protections.
 Protections en place pour l'instant : prompt système durci, filtre d'entrée,
 classifieur de sécurité, nettoyage et délimitation des documents et des résultats d'outils,
 outils en moindre privilège avec confirmation, minimisation des données,
-filtre de sortie, limite de débit et taille maximale de réponse.
+filtre de sortie, limite de débit et taille maximale de réponse,
+journal structuré avec alertes et données masquées.
 """
 
 import time
@@ -25,7 +26,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from app.secure.guards import (classifieur, documents, filtre_entree, filtre_sortie,
-                               limites, minimisation, outils_proteges)
+                               journal_securise, limites, minimisation, outils_proteges)
 from app.secure.guards.prompt_durci import REGLES, construire_prompt_durci
 from app.secure.protections import charger_protections
 from app.shared.config import charger_config
@@ -73,6 +74,18 @@ def prompt_systeme(id_client: str, passages: list[dict]) -> str:
     return construire_prompt_durci(id_client, passages, canary, documentation)
 
 
+def ecrire_journal(evenement: dict, alertes: list[str], bloque: bool = False,
+                   type_evenement: str | None = None) -> None:
+    """
+    Toutes les écritures du journal de B passent par ici : même structure pour
+    chaque ligne (niveau, evenement, alertes), et données sensibles masquées.
+    """
+    ligne = journal_securise.structurer(evenement, alertes, bloque, type_evenement)
+    if protections.journal_masque:
+        ligne = journal_securise.masquer(ligne, config.canary, outils.clients)
+    journaliser(config.dossier_logs, VERSION, ligne)
+
+
 MESSAGE_DE_REFUS = ("Désolé, je ne peux pas traiter cette demande. "
                     "Je peux vous aider pour vos contrats, factures et démarches Brumelec.")
 
@@ -86,10 +99,10 @@ def refuser(question: Question, motif: str, debut: float) -> dict:
     resultat = {"version": VERSION, "reponse": MESSAGE_DE_REFUS, "outils_appeles": [],
                 "sources": [], "latence_s": round(time.perf_counter() - debut, 3),
                 "bloque": True}
-    journaliser(config.dossier_logs, VERSION,
-                {"id_client": question.id_client, "graine": question.graine,
-                 "question": question.message[:500],   # un message géant n'est pas recopié en entier
-                 "protections": protections.actives(), "alerte": motif, **resultat})
+    ecrire_journal({"id_client": question.id_client, "graine": question.graine,
+                    "question": question.message[:500],   # un message géant n'est pas recopié en entier
+                    "protections": protections.actives(), **resultat},
+                   alertes=[motif], bloque=True)
     return resultat
 
 
@@ -194,12 +207,10 @@ def chat(question: Question):
         # Actions que le client doit confirmer lui-même (POST /confirmer)
         "a_confirmer": a_confirmer,
     }
-    journaliser(config.dossier_logs, VERSION,
-                {"id_client": question.id_client, "graine": question.graine,
-                 "question": question.message, "protections": protections.actives(),
-                 # requête traitée, mais une anomalie a été trouvée et neutralisée
-                 **({"alerte": " ; ".join(dict.fromkeys(alertes))} if alertes else {}),   # sans doublon
-                 **resultat})
+    # Requête traitée. S'il y a des alertes, une anomalie a été trouvée et neutralisée.
+    ecrire_journal({"id_client": question.id_client, "graine": question.graine,
+                    "question": question.message, "protections": protections.actives(),
+                    **resultat}, alertes)
     return resultat
 
 
@@ -213,7 +224,8 @@ def confirmer(confirmation: Confirmation):
     """Le client confirme lui-même une action sensible mise en attente par /chat."""
     resultat = outils_proteges.confirmer(confirmation.id_action, confirmation.id_client,
                                          outils.fonctions())
-    journaliser(config.dossier_logs, VERSION,
-                {"id_client": confirmation.id_client, "confirmation": confirmation.id_action,
-                 "resultat": resultat})
+    ecrire_journal({"id_client": confirmation.id_client, "confirmation": confirmation.id_action,
+                    "resultat": resultat},
+                   alertes=["confirmation refusée"] if "refuse" in resultat else [],
+                   type_evenement="confirmation")
     return resultat

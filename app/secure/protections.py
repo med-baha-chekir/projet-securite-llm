@@ -50,6 +50,8 @@ class Protections:
     sortie_donnees: bool
     # Filtre de sortie : images, liens externes et HTML neutralisés (A7)
     sortie_html: bool
+    # Journal : canary et données personnelles masqués avant écriture (RGPD)
+    journal_masque: bool
     # RÉGLAGE D'ANALYSE, désactivé par défaut. La vraie défense est de ne PAS mettre
     # de secret dans le prompt. Mais sans secret, les fuites tombent à zéro quoi
     # qu'il arrive, et on ne peut plus mesurer l'effet du filtre de sortie seul.
@@ -76,5 +78,6 @@ def charger_protections() -> Protections:
         sortie_secrets=interrupteur("PROTECTION_SORTIE_SECRETS", True),
         sortie_donnees=interrupteur("PROTECTION_SORTIE_DONNEES", True),
         sortie_html=interrupteur("PROTECTION_SORTIE_HTML", True),
+        journal_masque=interrupteur("PROTECTION_JOURNAL_MASQUE", True),
         secret_dans_prompt=interrupteur("SECRET_DANS_PROMPT", False),
     )
