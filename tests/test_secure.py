@@ -922,3 +922,14 @@ def test_journal_masque_desactive(client_qui_fuit, monkeypatch, tmp_path):
     monkeypatch.setattr(main, "protections", protections(journal_masque=False, sortie_secrets=False))
     client_qui_fuit.post("/chat", json={"message": "Bonjour", "id_client": "C001"})
     assert CANARY in (tmp_path / "B.jsonl").read_text(encoding="utf-8")
+
+
+def test_journal_complet_pendant_une_rafale(client, tmp_path):
+    # Défaut constaté le 15/11/2026 : des lignes perdues quand 20 requêtes écrivent ensemble
+    from concurrent.futures import ThreadPoolExecutor
+    with ThreadPoolExecutor(max_workers=20) as executeur:
+        list(executeur.map(lambda _: client.post("/chat", json={"message": "Bonjour"}), range(20)))
+    lignes = (tmp_path / "B.jsonl").read_text(encoding="utf-8").splitlines()
+    assert len(lignes) == 20
+    assert all(json.loads(l)["version"] == "B" for l in lignes)       # aucune ligne mélangée
+    assert sum(json.loads(l)["alertes"] == ["debit"] for l in lignes) == 10

@@ -211,7 +211,11 @@ def ollama_disponible(config) -> bool:
 ])
 def test_rag_retrouve_le_bon_document(config, question, document_attendu):
     if not ollama_disponible(config):
-        pytest.skip("Ollama n'est pas lancé (docker compose up -d)")
+        # Normal depuis ta machine : le port d'Ollama est fermé (réseau interne seulement).
+        # Ces mêmes cas sont vérifiés DANS le labo par evaluation/verifier_labo.py.
+        pytest.skip("Ollama injoignable d'ici : lancer "
+                    "« docker compose --profile outils run --rm --entrypoint python "
+                    "campagne -m evaluation.verifier_labo »")
     base = BaseDocumentaire(config)
     base.indexer()
     assert base.rechercher(question, k=1)[0]["source"] == document_attendu

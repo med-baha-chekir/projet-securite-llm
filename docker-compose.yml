@@ -197,6 +197,9 @@ services:
     environment:
       - URL_APP_A=http://app-vulnerable:8000
       - URL_APP_B=http://app-secure:8000
+      # Utilisée seulement par evaluation/verifier_labo.py (test du RAG réel) ;
+      # la campagne elle-même ne parle jamais directement au modèle.
+      - OLLAMA_URL=http://ollama:11434
     volumes:
       - ./results:/projet/results          # résultats bruts écrits sur ta machine
       - ./attacks:/projet/attacks:ro       # scénarios lus sans reconstruire l'image

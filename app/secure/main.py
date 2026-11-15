@@ -18,6 +18,7 @@ filtre de sortie, limite de débit et taille maximale de réponse,
 journal structuré avec alertes et données masquées.
 """
 
+import threading
 import time
 from contextlib import asynccontextmanager
 
@@ -74,6 +75,9 @@ def prompt_systeme(id_client: str, passages: list[dict]) -> str:
     return construire_prompt_durci(id_client, passages, canary, documentation)
 
 
+VERROU_JOURNAL = threading.Lock()
+
+
 def ecrire_journal(evenement: dict, alertes: list[str], bloque: bool = False,
                    type_evenement: str | None = None) -> None:
     """
@@ -83,7 +87,11 @@ def ecrire_journal(evenement: dict, alertes: list[str], bloque: bool = False,
     ligne = journal_securise.structurer(evenement, alertes, bloque, type_evenement)
     if protections.journal_masque:
         ligne = journal_securise.masquer(ligne, config.canary, outils.clients)
-    journaliser(config.dossier_logs, VERSION, ligne)
+    # Verrou : pendant une rafale, plusieurs requêtes écrivent en même temps. Sans
+    # lui, des lignes étaient perdues (constaté le 15/11/2026 : 38 refus de débit
+    # journalisés sur 50). Une seule écriture à la fois.
+    with VERROU_JOURNAL:
+        journaliser(config.dossier_logs, VERSION, ligne)
 
 
 MESSAGE_DE_REFUS = ("Désolé, je ne peux pas traiter cette demande. "

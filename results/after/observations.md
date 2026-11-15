@@ -105,3 +105,11 @@ lignes (canary, noms, adresses e-mail, code interne : recherche négative).
   les alertes pendant une rafale. Correction prévue : un verrou autour de l'écriture.
 - **Latences mesurées en une seule session**, mais sur une machine fragile (carte
   graphique de 4 Go, voir l'incident de la campagne AVANT).
+
+## Corrections après le tag `v-after` (16/11/2026)
+
+Faites APRÈS la campagne officielle : le tag `v-after` désigne le code exactement mesuré.
+- Verrou d'écriture du journal de B : plus aucune ligne perdue pendant une rafale
+  (test : 20 requêtes simultanées, 20 lignes, 10 refus de débit journalisés).
+- Bouton « Confirmer cette action » dans l'interface (route `/confirmer` déjà existante).
+Aucune de ces corrections ne change un verdict d'attaque ni une réponse du modèle.

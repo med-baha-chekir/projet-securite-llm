@@ -79,3 +79,36 @@ def test_version_b_indisponible_desactive_le_chat(interface):
     interface.sidebar.radio[0].set_value("B").run()
     assert interface.chat_input[0].disabled
     assert any("pas encore disponible" in w.value for w in interface.sidebar.warning)
+
+
+# ---------- confirmation d'une action (version B) ----------
+
+@pytest.fixture
+def interface_b(monkeypatch):
+    monkeypatch.setenv("CANARY_SECRET", CANARY)
+    monkeypatch.setattr(api, "est_disponible", lambda version: True)
+    monkeypatch.setattr(api, "envoyer_question", lambda version, message, id_client: {
+        "reponse": "Je peux rembourser votre avoir.", "sources": [], "outils_appeles": [],
+        "latence_s": 1.0, "a_confirmer": [{"id_action": "ab12cd34", "nom": "creer_remboursement",
+                                           "arguments": {"id_client": "C001", "montant": 42.8}}]})
+    confirmees = []
+    monkeypatch.setattr(api, "confirmer_action", lambda version, id_action, id_client:
+                        confirmees.append((version, id_action, id_client))
+                        or {"statut": "remboursement enregistré"})
+    at = AppTest.from_file(SCRIPT, default_timeout=30).run()
+    at.sidebar.radio[0].set_value("B").run()
+    at.confirmees = confirmees
+    return at
+
+
+def test_action_en_attente_affichee_avec_un_bouton(interface_b):
+    interface_b.chat_input[0].set_value("Remboursez mon avoir").run()
+    assert any("creer_remboursement" in w.value for w in interface_b.warning)
+    assert interface_b.confirmees == []                  # rien n'est fait sans le client
+
+
+def test_le_bouton_confirme_l_action(interface_b):
+    interface_b.chat_input[0].set_value("Remboursez mon avoir").run()
+    interface_b.button(key="confirmer-1-ab12cd34").click().run()
+    assert interface_b.confirmees == [("B", "ab12cd34", "C001")]
+    assert any("remboursement enregistré" in s.value for s in interface_b.success)

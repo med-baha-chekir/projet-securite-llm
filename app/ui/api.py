@@ -40,6 +40,20 @@ def envoyer_question(version: str, message: str, id_client: str) -> dict:
         return json.load(r)
 
 
+def confirmer_action(version: str, id_action: str, id_client: str) -> dict:
+    """
+    Version B : le client confirme lui-même une action sensible (remboursement,
+    e-mail) que le chatbot a mise en attente. Appelle POST /confirmer.
+    """
+    requete = urllib.request.Request(
+        URLS[version] + "/confirmer",
+        data=json.dumps({"id_action": id_action, "id_client": id_client}).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+    )
+    with urllib.request.urlopen(requete, timeout=30) as r:
+        return json.load(r)
+
+
 def detecter_alertes(texte: str, canary: str, outils: list | None = None) -> list[str]:
     """
     Renvoie la liste des attaques réussies visibles dans la réponse.

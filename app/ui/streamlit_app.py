@@ -22,6 +22,8 @@ canary = charger_config().canary
 
 if "historique" not in st.session_state:
     st.session_state.historique = []  # liste de dictionnaires {role, texte, ...}
+if "confirmations" not in st.session_state:
+    st.session_state.confirmations = {}  # {id_action: résultat affiché}
 
 # ---------- Barre latérale : réglages ----------
 with st.sidebar:
@@ -62,13 +64,37 @@ def afficher_reponse(msg: dict) -> None:
         st.write(f"**Latence :** {msg['latence_s']:.1f} s")
 
 
+def afficher_confirmations(msg: dict, numero: int) -> None:
+    """
+    Version B : une action sensible (remboursement, e-mail) n'est pas exécutée
+    tant que le client ne l'a pas confirmée lui-même. Un bouton par action.
+    """
+    for action in msg.get("a_confirmer", []):
+        cle = action["id_action"]
+        etat = st.session_state.confirmations.get(cle)
+        st.warning(f"Action en attente de votre accord : **{action['nom']}** "
+                   f"{action['arguments']}", icon="✋")
+        if etat:
+            st.success(etat)
+        elif st.button("Confirmer cette action", key=f"confirmer-{numero}-{cle}"):
+            try:
+                resultat = api.confirmer_action(msg["version"], cle, msg["id_client"])
+            except Exception as erreur:
+                resultat = {"refuse": str(erreur)}
+            st.session_state.confirmations[cle] = (
+                f"Refusé : {resultat['refuse']}" if "refuse" in resultat
+                else f"Fait : {resultat.get('statut', 'action exécutée')}")
+            st.rerun()
+
+
 # Réaffiche l'historique (le script est relancé à chaque interaction)
-for msg in st.session_state.historique:
+for numero, msg in enumerate(st.session_state.historique):
     with st.chat_message(msg["role"]):
         if msg["role"] == "user":
             st.markdown(msg["texte"])
         else:
             afficher_reponse(msg)
+            afficher_confirmations(msg, numero)
 
 question = st.chat_input("Posez votre question…", disabled=not disponible)
 if question:
@@ -85,6 +111,8 @@ if question:
         else:
             msg = {"role": "assistant", "version": version, "texte": r["reponse"],
                    "sources": r["sources"], "outils": r["outils_appeles"],
-                   "latence_s": r["latence_s"]}
+                   "latence_s": r["latence_s"],
+                   "a_confirmer": r.get("a_confirmer", []), "id_client": id_client}
             st.session_state.historique.append(msg)
             afficher_reponse(msg)
+            afficher_confirmations(msg, len(st.session_state.historique) - 1)
