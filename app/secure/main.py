@@ -5,13 +5,13 @@ Lancement local :   uvicorn app.secure.main:app --port 8001
 Dans Docker :       service « app-secure » (réseau interne uniquement)
 
 Chemin d'une question (identique à la version A, plus les protections) :
-  question -> FILTRE D'ENTRÉE -> CLASSIFIEUR -> recherche RAG -> prompt durci -> modèle (+ outils)
+  question -> FILTRE D'ENTRÉE -> CLASSIFIEUR -> recherche RAG -> NETTOYAGE DES DOCUMENTS -> prompt durci -> modèle (+ outils)
            -> journal -> réponse
 
 Le modèle, les données, le RAG et les outils viennent de app/shared/, comme
 pour A : les deux versions ne diffèrent QUE par les protections.
 Protections en place pour l'instant : prompt système durci, filtre d'entrée,
-classifieur de sécurité.
+classifieur de sécurité, nettoyage et délimitation des documents et des résultats d'outils.
 """
 
 import time
@@ -20,7 +20,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from pydantic import BaseModel
 
-from app.secure.guards import classifieur, filtre_entree
+from app.secure.guards import classifieur, documents, filtre_entree
 from app.secure.guards.prompt_durci import construire_prompt_durci
 from app.secure.protections import charger_protections
 from app.shared.config import charger_config
@@ -62,7 +62,9 @@ def prompt_systeme(id_client: str, passages: list[dict]) -> str:
         # Protection désactivée : exactement le prompt naïf de la version A
         return construire_prompt_systeme(config.canary, id_client, passages)
     canary = config.canary if protections.secret_dans_prompt else ""
-    return construire_prompt_durci(id_client, passages, canary)
+    # Délimitation par balises <document> si la protection des documents est activée
+    documentation = documents.delimiter(passages) if protections.documents else None
+    return construire_prompt_durci(id_client, passages, canary, documentation)
 
 
 MESSAGE_DE_REFUS = ("Désolé, je ne peux pas traiter cette demande. "
@@ -114,6 +116,14 @@ def chat(question: Question):
     # 1. Recherche des passages utiles dans la documentation
     passages = base.rechercher(message, k=3)
 
+    # 1 bis. Les documents et les résultats d'outils sont des DONNÉES : on retire ce
+    # qui ressemble à des ordres cachés. Les anomalies deviennent des alertes.
+    alertes = []
+    fonctions = outils.fonctions()
+    if protections.documents:
+        passages, alertes = documents.nettoyer_passages(passages)
+        fonctions = documents.proteger_outils(fonctions, alertes)
+
     # 2. Prompt système (durci, sans secret)
     messages = [
         {"role": "system", "content": prompt_systeme(question.id_client, passages)},
@@ -121,7 +131,7 @@ def chat(question: Question):
     ]
 
     # 3. Appel au modèle (les outils ne sont pas encore restreints : protection à venir)
-    reponse = discuter_avec_outils(config, messages, SCHEMAS_OUTILS, outils.fonctions(),
+    reponse = discuter_avec_outils(config, messages, SCHEMAS_OUTILS, fonctions,
                                    graine=question.graine)
 
     # 4. Journal et réponse. « bloque » vaut True seulement dans refuser().
@@ -136,5 +146,7 @@ def chat(question: Question):
     journaliser(config.dossier_logs, VERSION,
                 {"id_client": question.id_client, "graine": question.graine,
                  "question": question.message, "protections": protections.actives(),
+                 # requête traitée, mais une anomalie a été trouvée et neutralisée
+                 **({"alerte": " ; ".join(alertes)} if alertes else {}),
                  **resultat})
     return resultat

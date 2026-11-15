@@ -32,6 +32,8 @@ class Protections:
     filtre_injection: bool
     # Classifieur de sécurité Llama Guard : juge le sens du message (contenu dangereux)
     classifieur: bool
+    # Documents du RAG et résultats d'outils : nettoyage + délimitation (A5)
+    documents: bool
     # RÉGLAGE D'ANALYSE, désactivé par défaut. La vraie défense est de ne PAS mettre
     # de secret dans le prompt. Mais sans secret, les fuites tombent à zéro quoi
     # qu'il arrive, et on ne peut plus mesurer l'effet du filtre de sortie seul.
@@ -49,5 +51,6 @@ def charger_protections() -> Protections:
         taille_max=interrupteur("PROTECTION_TAILLE_MAX", True),
         filtre_injection=interrupteur("PROTECTION_FILTRE_INJECTION", True),
         classifieur=interrupteur("PROTECTION_CLASSIFIEUR", True),
+        documents=interrupteur("PROTECTION_DOCUMENTS", True),
         secret_dans_prompt=interrupteur("SECRET_DANS_PROMPT", False),
     )
