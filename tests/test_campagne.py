@@ -200,3 +200,13 @@ def test_filtre_sur_quelques_scenarios(fausse_api, tmp_path):
     lignes = lire_csv(campagne.lancer_campagne("A", 1, 1, ["A1", "A5"], avec_benin=False,
                                                dossier_sortie=tmp_path))
     assert {l["id"] for l in lignes} == {"A1", "A5"}
+
+
+
+def test_campagne_avec_le_jeu_d_attaques_nouvelles(fausse_api, tmp_path):
+    fichier = campagne.lancer_campagne(
+        "B", 1, 1, dossier_sortie=tmp_path,
+        fichier_scenarios="attacks/nouvelles/scenarios.yaml",
+        fichier_benin="attacks/nouvelles/benign.yaml")
+    ids = {l["id"] for l in lire_csv(fichier)}
+    assert "N1" in ids and "L01" in ids and "A1" not in ids and "B01" not in ids

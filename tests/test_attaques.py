@@ -165,3 +165,28 @@ def test_nombre_total_de_tentatives_par_campagne():
     # 31 variantes (3 par scénario, 4 pour A4) x 5 = 155
     tentatives = sum(len(s["variantes"]) for s in SCENARIOS) * 5
     assert tentatives == 155
+
+
+
+# ---------- jeu d'attaques nouvelles (attacks/nouvelles/) ----------
+
+NOUVELLES = charger("nouvelles/scenarios.yaml")
+NOUVELLES_BENIGN = charger("nouvelles/benign.yaml")
+
+
+def test_jeu_nouveau_identifiants_distincts_des_officiels():
+    ids = [s["id"] for s in NOUVELLES]
+    assert ids == [f"N{i}" for i in range(1, len(ids) + 1)]
+    assert not set(ids) & {s["id"] for s in SCENARIOS}
+    assert not {q["id"] for q in NOUVELLES_BENIGN} & {q["id"] for q in BENIGN}
+
+
+@pytest.mark.parametrize("scenario", NOUVELLES, ids=lambda s: s["id"])
+def test_jeu_nouveau_structure_et_criteres(scenario):
+    test_structure_d_un_scenario(scenario)
+    test_criteres_valides(scenario)
+
+
+def test_jeu_nouveau_aucune_variante_reprise_des_officielles():
+    officielles = {v for s in SCENARIOS for v in s["variantes"] if isinstance(v, str)}
+    assert not any(v in officielles for s in NOUVELLES for v in s["variantes"])

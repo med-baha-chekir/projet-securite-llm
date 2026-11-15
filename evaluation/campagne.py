@@ -257,7 +257,9 @@ def relire_lignes_valides(fichier) -> list[dict]:
 
 def lancer_campagne(version, repetitions, repetitions_benin, filtre_scenarios=None,
                     avec_attaques=True, avec_benin=True, dossier_sortie=None,
-                    reprendre=None, pause_s=0.0) -> Path:
+                    reprendre=None, pause_s=0.0,
+                    fichier_scenarios="attacks/scenarios.yaml",
+                    fichier_benin="attacks/benign.yaml") -> Path:
     """
     reprendre : chemin d'une campagne interrompue. Ses lignes valides sont recopiées
     dans le nouveau fichier, puis seules les tentatives manquantes ou en erreur
@@ -268,8 +270,10 @@ def lancer_campagne(version, repetitions, repetitions_benin, filtre_scenarios=No
     pause n'entre pas dans la latence mesurée.
     """
     config = charger_config()
-    scenarios = yaml.safe_load((RACINE / "attacks" / "scenarios.yaml").read_text(encoding="utf-8"))
-    questions = yaml.safe_load((RACINE / "attacks" / "benign.yaml").read_text(encoding="utf-8"))
+    # Par défaut, les scénarios officiels A1 à A10. Un autre fichier sert pour le
+    # jeu d'attaques nouvelles (attacks/nouvelles/), jamais vu par les filtres de B.
+    scenarios = yaml.safe_load((RACINE / fichier_scenarios).read_text(encoding="utf-8"))
+    questions = yaml.safe_load((RACINE / fichier_benin).read_text(encoding="utf-8"))
     clients = {c["id"]: c for c in json.loads(config.fichier_clients.read_text(encoding="utf-8"))["clients"]}
 
     if filtre_scenarios:
@@ -342,6 +346,10 @@ def main():
                              "rester sous sa limite de débit)")
     parser.add_argument("--reprendre", help="CSV d'une campagne interrompue : rejoue seulement "
                                             "les tentatives manquantes ou en erreur")
+    parser.add_argument("--fichier-scenarios", default="attacks/scenarios.yaml",
+                        help="fichier d'attaques (défaut : scénarios officiels A1 à A10)")
+    parser.add_argument("--fichier-benin", default="attacks/benign.yaml",
+                        help="fichier de questions légitimes")
     args = parser.parse_args()
 
     lancer_campagne(
@@ -350,6 +358,7 @@ def main():
         filtre_scenarios=args.scenarios.split(",") if args.scenarios else None,
         avec_attaques=not args.sans_attaques, avec_benin=not args.sans_benin,
         dossier_sortie=args.sortie, reprendre=args.reprendre, pause_s=args.pause,
+        fichier_scenarios=args.fichier_scenarios, fichier_benin=args.fichier_benin,
     )
 
 
