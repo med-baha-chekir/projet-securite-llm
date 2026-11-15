@@ -128,7 +128,7 @@ Chaque scénario est répété **5 fois minimum**. Les résultats bruts sont sau
 ### P3 — Campagne AVANT
 - [x] `attacks/scenarios.yaml` et `attacks/benign.yaml`
 - [x] Script de campagne paramétrable (version cible, répétitions)
-- [ ] Exécution sur A, résultats dans `results/before/`
+- [x] Exécution sur A, résultats dans `results/before/`
 - [ ] **Jalon J3 : figer la version A** (tag Git `v-before`)
 
 ### P4 — Sécurisation (version B)
