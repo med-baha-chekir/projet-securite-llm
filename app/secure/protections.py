@@ -38,6 +38,8 @@ class Protections:
     outils: bool
     # Remboursement et e-mail mis en attente d'une confirmation du client
     confirmation: bool
+    # Minimisation : fiche client réduite, documents réservés au personnel écartés (A4, A8)
+    minimisation: bool
     # Filtre de sortie : canary et codes internes masqués (A3, A4)
     sortie_secrets: bool
     # Filtre de sortie : données personnelles des autres clients masquées (A8)
@@ -64,6 +66,7 @@ def charger_protections() -> Protections:
         documents=interrupteur("PROTECTION_DOCUMENTS", True),
         outils=interrupteur("PROTECTION_OUTILS", True),
         confirmation=interrupteur("PROTECTION_CONFIRMATION", True),
+        minimisation=interrupteur("PROTECTION_MINIMISATION", True),
         sortie_secrets=interrupteur("PROTECTION_SORTIE_SECRETS", True),
         sortie_donnees=interrupteur("PROTECTION_SORTIE_DONNEES", True),
         sortie_html=interrupteur("PROTECTION_SORTIE_HTML", True),

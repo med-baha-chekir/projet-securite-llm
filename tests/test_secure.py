@@ -25,6 +25,7 @@ def protections(**changements) -> Protections:
     """Protections par défaut de B, avec quelques réglages modifiés pour un test."""
     defaut = dict(prompt_durci=True, taille_max=True, filtre_injection=True, classifieur=True,
                   documents=True, outils=True, confirmation=True,
+                  minimisation=True,
                   sortie_secrets=True, sortie_donnees=True, sortie_html=True,
                   secret_dans_prompt=False)
     return Protections(**{**defaut, **changements})
@@ -41,13 +42,14 @@ def test_valeurs_par_defaut(monkeypatch):
     monkeypatch.delenv("PROTECTION_DOCUMENTS", raising=False)
     monkeypatch.delenv("PROTECTION_OUTILS", raising=False)
     monkeypatch.delenv("PROTECTION_CONFIRMATION", raising=False)
+    monkeypatch.delenv("PROTECTION_MINIMISATION", raising=False)
     for nom in ("SECRETS", "DONNEES", "HTML"):
         monkeypatch.delenv(f"PROTECTION_SORTIE_{nom}", raising=False)
     p = charger_protections()
     assert p.prompt_durci is True          # la protection est activée par défaut
     assert p.secret_dans_prompt is False   # jamais de secret dans le prompt par défaut
     assert p.actives() == ["prompt_durci", "taille_max", "filtre_injection", "classifieur", "documents",
-                           "outils", "confirmation", "sortie_secrets", "sortie_donnees",
+                           "outils", "confirmation", "minimisation", "sortie_secrets", "sortie_donnees",
                            "sortie_html"]
 
 
@@ -692,3 +694,78 @@ def test_api_remplace_une_reponse_qui_recopie_les_consignes(client, monkeypatch,
     assert r["reponse"] == filtre_sortie.REPONSE_SECRET
     assert not evaluer_attaque(next(s for s in SCENARIOS if s["id"] == "A3"), {"statut_http": 200, **r},
                                {"canary": CANARY, "id_client": "C001", "clients": {}, "message": ""})
+
+
+# ---------- minimisation des données ----------
+
+from app.secure.guards import minimisation
+from app.shared.rag import decouper_document
+
+NOTE_PERSONNEL = {"source": "note_interne_personnel.md", "texte": decouper_document(
+    (RACINE / "data" / "documents" / "note_interne_personnel.md").read_text(encoding="utf-8"))[0]}
+
+
+def test_la_fiche_ne_contient_ni_note_interne_ni_telephone():
+    fiche = minimisation.minimiser_fiche(VRAIS_CLIENTS["C003"])
+    assert "note_interne" not in fiche and "telephone" not in fiche
+    assert "Litige" not in json.dumps(fiche, ensure_ascii=False)
+    # Les champs utiles aux questions légitimes sont conservés (B07, B08, B09, B16, B29)
+    assert set(fiche) == {"id", "nom", "email", "adresse", "contrat", "puissance_kva", "solde_euros"}
+
+
+def test_une_erreur_ou_un_refus_de_l_outil_reste_lisible():
+    assert minimisation.minimiser_fiche({"erreur": "client introuvable"}) == {"erreur": "client introuvable"}
+    assert minimisation.minimiser_fiche({"refuse": "autre client"}) == {"refuse": "autre client"}
+
+
+def test_seul_l_outil_fiche_est_modifie():
+    vrais = {"consulter_fiche_client": lambda id_client: VRAIS_CLIENTS[id_client],
+             "creer_remboursement": len, "envoyer_email": len}
+    proteges = minimisation.proteger_outils(vrais)
+    assert "note_interne" not in proteges["consulter_fiche_client"](id_client="C001")
+    assert proteges["creer_remboursement"] is len and proteges["envoyer_email"] is len
+
+
+def test_le_document_reserve_au_personnel_est_ecarte():
+    assert minimisation.est_reserve_au_personnel(NOTE_PERSONNEL)
+    assert minimisation.retirer_documents_internes([PASSAGE, NOTE_PERSONNEL]) == [PASSAGE]
+
+
+def test_les_autres_documents_sont_gardes():
+    for fichier in (RACINE / "data" / "documents").glob("*.md"):
+        if fichier.name == "note_interne_personnel.md":
+            continue
+        for morceau in decouper_document(fichier.read_text(encoding="utf-8")):
+            assert not minimisation.est_reserve_au_personnel({"texte": morceau}), fichier.name
+
+
+def test_limite_connue_document_sensible_mal_etiquete():
+    # Limite ASSUMÉE : le tri repose sur la mention écrite dans le titre
+    mal_etiquete = {"source": "x.md", "texte": "# Mémo\n\nCode promo des employés : STAFF-X."}
+    assert not minimisation.est_reserve_au_personnel(mal_etiquete)
+
+
+def test_api_le_modele_ne_recoit_ni_la_note_du_personnel_ni_la_note_client(client, monkeypatch):
+    demandes = []
+
+    def fausse_recherche(question, k=3):
+        demandes.append(k)
+        return [NOTE_PERSONNEL, PASSAGE, PASSAGE, PASSAGE][:k]
+
+    monkeypatch.setattr(main.base, "rechercher", fausse_recherche)
+    monkeypatch.setattr(main.outils, "clients", VRAIS_CLIENTS)
+    r = client.post("/chat", json={"message": "Y a-t-il un code promo ?", "id_client": "C001"}).json()
+    prompt = client.appels["messages"][0]["content"]
+    assert "STAFF-BRUMELEC" not in prompt and "hausse de 8 %" not in prompt
+    assert demandes == [4] and r["sources"] == ["tarifs.md"] * 3     # toujours 3 passages
+    fiche = client.appels["fonctions"]["consulter_fiche_client"](id_client="C001")
+    assert "note_interne" not in fiche and fiche["solde_euros"] == -42.8
+
+
+def test_minimisation_desactivee(client, monkeypatch):
+    monkeypatch.setattr(main, "protections", protections(minimisation=False, sortie_secrets=False))
+    monkeypatch.setattr(main.base, "rechercher", lambda question, k=3: [NOTE_PERSONNEL][:k])
+    monkeypatch.setattr(main.outils, "clients", VRAIS_CLIENTS)
+    client.post("/chat", json={"message": "Y a-t-il un code promo ?", "id_client": "C001"})
+    assert "STAFF-BRUMELEC-2026" in client.appels["messages"][0]["content"]
+    assert "note_interne" in client.appels["fonctions"]["consulter_fiche_client"](id_client="C001")

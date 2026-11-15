@@ -13,7 +13,8 @@ Le modèle, les données, le RAG et les outils viennent de app/shared/, comme
 pour A : les deux versions ne diffèrent QUE par les protections.
 Protections en place pour l'instant : prompt système durci, filtre d'entrée,
 classifieur de sécurité, nettoyage et délimitation des documents et des résultats d'outils,
-outils en moindre privilège avec confirmation, filtre de sortie.
+outils en moindre privilège avec confirmation, minimisation des données,
+filtre de sortie.
 """
 
 import time
@@ -23,7 +24,7 @@ from fastapi import FastAPI
 from pydantic import BaseModel
 
 from app.secure.guards import (classifieur, documents, filtre_entree, filtre_sortie,
-                               outils_proteges)
+                               minimisation, outils_proteges)
 from app.secure.guards.prompt_durci import REGLES, construire_prompt_durci
 from app.secure.protections import charger_protections
 from app.shared.config import charger_config
@@ -117,12 +118,20 @@ def chat(question: Question):
             return refuser(question, f"classifieur:{motif}", debut)
 
     # 1. Recherche des passages utiles dans la documentation
-    passages = base.rechercher(message, k=3)
+    if protections.minimisation:
+        # Un document réservé au personnel n'est jamais donné au chatbot des clients.
+        # On en demande un de plus pour garder 3 passages après ce tri.
+        passages = minimisation.retirer_documents_internes(base.rechercher(message, k=4))[:3]
+    else:
+        passages = base.rechercher(message, k=3)
 
     # 1 bis. Les documents et les résultats d'outils sont des DONNÉES : on retire ce
     # qui ressemble à des ordres cachés. Les anomalies deviennent des alertes.
     alertes = []
     fonctions = outils.fonctions()
+    if protections.minimisation:
+        # La fiche client transmise au modèle ne contient que les champs utiles
+        fonctions = minimisation.proteger_outils(fonctions)
     # Moindre privilège : chaque outil vérifie qu'il agit pour le client connecté.
     # Les actions sensibles autorisées attendent la confirmation du client.
     a_confirmer = []
