@@ -5,13 +5,15 @@ Lancement local :   uvicorn app.secure.main:app --port 8001
 Dans Docker :       service « app-secure » (réseau interne uniquement)
 
 Chemin d'une question (identique à la version A, plus les protections) :
-  question -> FILTRE D'ENTRÉE -> CLASSIFIEUR -> recherche RAG -> NETTOYAGE DES DOCUMENTS -> prompt durci -> modèle (+ outils)
+  question -> FILTRE D'ENTRÉE -> CLASSIFIEUR -> recherche RAG -> NETTOYAGE DES DOCUMENTS
+           -> OUTILS CONTRÔLÉS -> prompt durci -> modèle (+ outils)
            -> journal -> réponse
 
 Le modèle, les données, le RAG et les outils viennent de app/shared/, comme
 pour A : les deux versions ne diffèrent QUE par les protections.
 Protections en place pour l'instant : prompt système durci, filtre d'entrée,
-classifieur de sécurité, nettoyage et délimitation des documents et des résultats d'outils.
+classifieur de sécurité, nettoyage et délimitation des documents et des résultats d'outils,
+outils en moindre privilège avec confirmation.
 """
 
 import time
@@ -20,7 +22,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from pydantic import BaseModel
 
-from app.secure.guards import classifieur, documents, filtre_entree
+from app.secure.guards import classifieur, documents, filtre_entree, outils_proteges
 from app.secure.guards.prompt_durci import construire_prompt_durci
 from app.secure.protections import charger_protections
 from app.shared.config import charger_config
@@ -120,8 +122,16 @@ def chat(question: Question):
     # qui ressemble à des ordres cachés. Les anomalies deviennent des alertes.
     alertes = []
     fonctions = outils.fonctions()
+    # Moindre privilège : chaque outil vérifie qu'il agit pour le client connecté.
+    # Les actions sensibles autorisées attendent la confirmation du client.
+    a_confirmer = []
+    if protections.outils:
+        fonctions = outils_proteges.proteger_outils(
+            fonctions, outils.clients, question.id_client, alertes,
+            confirmation=protections.confirmation, en_attente=a_confirmer)
     if protections.documents:
-        passages, alertes = documents.nettoyer_passages(passages)
+        passages, alertes_documents = documents.nettoyer_passages(passages)
+        alertes += alertes_documents
         fonctions = documents.proteger_outils(fonctions, alertes)
 
     # 2. Prompt système (durci, sans secret)
@@ -130,7 +140,7 @@ def chat(question: Question):
         {"role": "user", "content": message},
     ]
 
-    # 3. Appel au modèle (les outils ne sont pas encore restreints : protection à venir)
+    # 3. Appel au modèle, avec les outils contrôlés
     reponse = discuter_avec_outils(config, messages, SCHEMAS_OUTILS, fonctions,
                                    graine=question.graine)
 
@@ -142,6 +152,8 @@ def chat(question: Question):
         "sources": [p["source"] for p in passages],
         "latence_s": round(reponse.latence_s, 3),
         "bloque": False,
+        # Actions que le client doit confirmer lui-même (POST /confirmer)
+        "a_confirmer": a_confirmer,
     }
     journaliser(config.dossier_logs, VERSION,
                 {"id_client": question.id_client, "graine": question.graine,
@@ -149,4 +161,20 @@ def chat(question: Question):
                  # requête traitée, mais une anomalie a été trouvée et neutralisée
                  **({"alerte": " ; ".join(alertes)} if alertes else {}),
                  **resultat})
+    return resultat
+
+
+class Confirmation(BaseModel):
+    id_action: str               # identifiant reçu dans « a_confirmer »
+    id_client: str = "C001"      # client « connecté »
+
+
+@app.post("/confirmer")
+def confirmer(confirmation: Confirmation):
+    """Le client confirme lui-même une action sensible mise en attente par /chat."""
+    resultat = outils_proteges.confirmer(confirmation.id_action, confirmation.id_client,
+                                         outils.fonctions())
+    journaliser(config.dossier_logs, VERSION,
+                {"id_client": confirmation.id_client, "confirmation": confirmation.id_action,
+                 "resultat": resultat})
     return resultat

@@ -24,7 +24,7 @@ PASSAGE = {"source": "tarifs.md", "texte": "Le kWh coûte 0,21 €."}
 def protections(**changements) -> Protections:
     """Protections par défaut de B, avec quelques réglages modifiés pour un test."""
     defaut = dict(prompt_durci=True, taille_max=True, filtre_injection=True, classifieur=True,
-                  documents=True,
+                  documents=True, outils=True, confirmation=True,
                   secret_dans_prompt=False)
     return Protections(**{**defaut, **changements})
 
@@ -38,10 +38,13 @@ def test_valeurs_par_defaut(monkeypatch):
     monkeypatch.delenv("PROTECTION_FILTRE_INJECTION", raising=False)
     monkeypatch.delenv("PROTECTION_CLASSIFIEUR", raising=False)
     monkeypatch.delenv("PROTECTION_DOCUMENTS", raising=False)
+    monkeypatch.delenv("PROTECTION_OUTILS", raising=False)
+    monkeypatch.delenv("PROTECTION_CONFIRMATION", raising=False)
     p = charger_protections()
     assert p.prompt_durci is True          # la protection est activée par défaut
     assert p.secret_dans_prompt is False   # jamais de secret dans le prompt par défaut
-    assert p.actives() == ["prompt_durci", "taille_max", "filtre_injection", "classifieur", "documents"]
+    assert p.actives() == ["prompt_durci", "taille_max", "filtre_injection", "classifieur", "documents",
+                           "outils", "confirmation"]
 
 
 def test_interrupteur_lit_0_et_1(monkeypatch):
@@ -91,6 +94,7 @@ def client(tmp_path, monkeypatch):
 
     def faux_modele(config, messages, schemas, fonctions, graine=None):
         appels["messages"], appels["graine"] = messages, graine
+        appels["fonctions"] = fonctions
         appels["nombre"] = appels.get("nombre", 0) + 1
         return ReponseLLM("Le kWh coûte 0,21 €.", [], 1.5)
 
@@ -376,3 +380,143 @@ def test_protection_documents_desactivee(client, monkeypatch):
     client.post("/chat", json={"message": "Comment économiser de l'énergie ?"})
     prompt = client.appels["messages"][0]["content"]
     assert "PWNED-A5" in prompt and "<document source" not in prompt
+
+
+# ---------- outils en moindre privilège + confirmation ----------
+
+from app.secure.guards import outils_proteges
+from evaluation.criteres import evaluer_attaque
+
+CLIENTS = {
+    "C001": {"id": "C001", "nom": "Camille Ravenel", "email": "camille.ravenel@exemple.test",
+             "telephone": "01 99 00 12 34", "solde_euros": -42.80},
+    "C006": {"id": "C006", "nom": "Hugo Marchetti", "email": "hugo@exemple.test",
+             "telephone": "01 99 00 67 89", "solde_euros": 310.0},
+}
+
+
+@pytest.fixture
+def boite():
+    """Outils contrôlés pour le client C001, avec de faux outils qui notent leurs exécutions."""
+    executes, alertes, a_confirmer = [], [], []
+    vrais = {
+        "consulter_fiche_client": lambda id_client: CLIENTS[id_client],
+        "creer_remboursement": lambda id_client, montant: executes.append(
+            ("remboursement", id_client, montant)) or {"statut": "remboursement enregistré"},
+        "envoyer_email": lambda destinataire, texte: executes.append(
+            ("email", destinataire)) or {"statut": "e-mail envoyé"},
+    }
+
+    def fabriquer(confirmation=False, id_client="C001"):
+        return outils_proteges.proteger_outils(vrais, CLIENTS, id_client, alertes,
+                                               confirmation=confirmation, en_attente=a_confirmer)
+
+    outils_proteges.EN_ATTENTE.clear()
+    return SimpleNamespace(fabriquer=fabriquer, vrais=vrais, executes=executes,
+                           alertes=alertes, a_confirmer=a_confirmer)
+
+
+def test_fiche_seulement_celle_du_client_connecte(boite):
+    outils = boite.fabriquer()
+    assert outils["consulter_fiche_client"](id_client="c001")["nom"] == "Camille Ravenel"
+    assert "refuse" in outils["consulter_fiche_client"](id_client="C006")      # A8
+    assert boite.alertes == ["outil consulter_fiche_client refusé: " + outils_proteges.REFUS_AUTRE_CLIENT]
+
+
+def test_remboursement_seulement_son_propre_avoir(boite):
+    outils = boite.fabriquer()
+    assert "refuse" in outils["creer_remboursement"](id_client="C006", montant=9999)   # autre client
+    assert "refuse" in outils["creer_remboursement"](id_client="C001", montant=500)    # > avoir
+    assert "refuse" in outils["creer_remboursement"](id_client="C001", montant=-5)
+    assert "refuse" in outils["creer_remboursement"](id_client="C001", montant="beaucoup")
+    assert boite.executes == []
+    # Usage légitime : le remboursement de son avoir (42,80 €) passe
+    assert outils["creer_remboursement"](id_client="C001", montant=42.8)["statut"] == "remboursement enregistré"
+    assert boite.executes == [("remboursement", "C001", 42.8)]
+
+
+def test_email_seulement_vers_l_adresse_enregistree(boite):
+    outils = boite.fabriquer()
+    assert "refuse" in outils["envoyer_email"](destinataire="tous@exemple.test", texte="x")   # A6
+    assert "refuse" in outils["envoyer_email"](destinataire="hugo@exemple.test", texte="x")
+    assert outils["envoyer_email"](destinataire="Camille.Ravenel@exemple.test",
+                                   texte="Récapitulatif")["statut"] == "e-mail envoyé"
+    assert boite.executes == [("email", "camille.ravenel@exemple.test")]
+
+
+def test_client_inconnu_ou_parametres_inventes(boite):
+    outils = boite.fabriquer(id_client="C999")
+    assert "refuse" in outils["consulter_fiche_client"](id_client="C999")
+    # Paramètre inventé par le modèle : ignoré, sans plantage
+    assert "refuse" in boite.fabriquer()["envoyer_email"](adresse="x@exemple.test")
+
+
+def test_confirmation_l_action_attend_le_client(boite):
+    outils = boite.fabriquer(confirmation=True)
+    resultat = outils["creer_remboursement"](id_client="C001", montant=42.8)
+    assert resultat["statut"].startswith("en attente") and boite.executes == []
+    id_action = boite.a_confirmer[0]["id_action"]
+    # Un autre client ne peut pas confirmer à sa place
+    assert "refuse" in outils_proteges.confirmer(id_action, "C006", boite.vrais)
+    assert outils_proteges.confirmer(id_action, "C001", boite.vrais)["statut"] == "remboursement enregistré"
+    assert boite.executes == [("remboursement", "C001", 42.8)]
+    # Une seule fois
+    assert "refuse" in outils_proteges.confirmer(id_action, "C001", boite.vrais)
+
+
+def test_une_action_refusee_n_est_jamais_mise_en_attente(boite):
+    boite.fabriquer(confirmation=True)["creer_remboursement"](id_client="C006", montant=9999)
+    assert boite.a_confirmer == [] and outils_proteges.EN_ATTENTE == {}
+
+
+def test_la_fiche_ne_demande_pas_de_confirmation(boite):
+    assert boite.fabriquer(confirmation=True)["consulter_fiche_client"](id_client="C001")["id"] == "C001"
+
+
+def test_un_appel_refuse_ne_compte_pas_comme_une_attaque_reussie(boite):
+    # Lien avec la mesure : les critères de A6 et A8 ignorent les appels refusés
+    outils = boite.fabriquer()
+    appels = [
+        {"nom": "creer_remboursement", "arguments": {"id_client": "C006", "montant": 9999},
+         "resultat": outils["creer_remboursement"](id_client="C006", montant=9999)},
+        {"nom": "envoyer_email", "arguments": {"destinataire": "tous@exemple.test", "texte": "x"},
+         "resultat": outils["envoyer_email"](destinataire="tous@exemple.test", texte="x")},
+        {"nom": "consulter_fiche_client", "arguments": {"id_client": "C006"},
+         "resultat": outils["consulter_fiche_client"](id_client="C006")},
+    ]
+    resultat = {"statut_http": 200, "reponse": "Désolé, je ne peux pas.", "outils_appeles": appels}
+    contexte = {"canary": CANARY, "id_client": "C001", "clients": CLIENTS, "message": "..."}
+    for id_scenario in ("A6", "A8"):
+        scenario = next(s for s in SCENARIOS if s["id"] == id_scenario)
+        assert evaluer_attaque(scenario, resultat, contexte) == []
+
+
+def test_api_outils_controles_et_route_confirmer(client, tmp_path):
+    client.post("/chat", json={"message": "Quel est le solde de mon compte ?", "id_client": "C001"})
+    outils = client.appels["fonctions"]
+    assert "refuse" in outils["consulter_fiche_client"](id_client="C003")
+    en_attente = outils["creer_remboursement"](id_client="C001", montant=42.8)
+    assert en_attente["statut"].startswith("en attente")
+    assert not (tmp_path / "actions_simulees.jsonl").exists()        # rien n'a été exécuté
+    r = client.post("/confirmer", json={"id_action": en_attente["id_action"], "id_client": "C001"})
+    assert r.json()["statut"] == "remboursement enregistré"
+
+
+def test_api_renvoie_les_actions_a_confirmer_et_les_alertes(client, tmp_path, monkeypatch):
+    def faux_modele(config, messages, schemas, fonctions, graine=None):
+        fonctions["envoyer_email"](destinataire="tous@exemple.test", texte="Brumelec ferme")
+        fonctions["envoyer_email"](destinataire="camille.ravenel@exemple.test", texte="Récapitulatif")
+        return ReponseLLM("C'est noté.", [], 1.0)
+
+    monkeypatch.setattr(main, "discuter_avec_outils", faux_modele)
+    r = client.post("/chat", json={"message": "Envoyez-moi un récapitulatif", "id_client": "C001"}).json()
+    assert [a["nom"] for a in r["a_confirmer"]] == ["envoyer_email"]
+    ligne = json.loads((tmp_path / "B.jsonl").read_text(encoding="utf-8").splitlines()[0])
+    assert "outil envoyer_email refusé" in ligne["alerte"]
+
+
+def test_protection_outils_desactivee(client, monkeypatch, tmp_path):
+    monkeypatch.setattr(main, "protections", protections(outils=False))
+    client.post("/chat", json={"message": "Bonjour", "id_client": "C001"})
+    fiche = client.appels["fonctions"]["consulter_fiche_client"](id_client="C003")
+    assert "refuse" not in fiche and fiche["id"] == "C003"
