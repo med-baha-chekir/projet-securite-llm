@@ -118,6 +118,8 @@ services:
       # Pour mesurer une protection seule :
       #   PROTECTION_PROMPT_DURCI=0 docker compose up -d app-secure
       - PROTECTION_PROMPT_DURCI=${PROTECTION_PROMPT_DURCI:-1}
+      - PROTECTION_TAILLE_MAX=${PROTECTION_TAILLE_MAX:-1}
+      - PROTECTION_FILTRE_INJECTION=${PROTECTION_FILTRE_INJECTION:-1}
       - SECRET_DANS_PROMPT=${SECRET_DANS_PROMPT:-0}   # réglage d'analyse, voir app/secure/protections.py
     volumes:
       - ./logs:/projet/logs
