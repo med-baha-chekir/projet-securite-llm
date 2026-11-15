@@ -1,0 +1,17 @@
+# ============================================================
+#  DÉPANNAGE UNIQUEMENT : rouvre le port d'Ollama sur ta machine.
+#
+#  Ollama n'a pas d'authentification. Par défaut, son port n'est donc
+#  ouvert nulle part : seuls les services du réseau interne lui parlent.
+#  Ce fichier le rouvre sur 127.0.0.1 (ta machine seulement), le temps
+#  d'un test :
+#     docker compose -f docker-compose.yml -f docker-compose.debug.yml up -d ollama
+#  Pour le refermer :
+#     docker compose up -d ollama
+#
+#  Ne pas utiliser pendant une campagne de mesure ni pendant la démo.
+# ============================================================
+services:
+  ollama:
+    ports:
+      - "127.0.0.1:11434:11434"

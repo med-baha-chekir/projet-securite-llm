@@ -2,9 +2,7 @@
 #  Laboratoire « Sécurité d'un LLM : avant / après »
 #  Lancement :  docker compose up -d
 #
-#  Pour l'instant : uniquement le modèle local (Ollama).
-#  Les services app-vulnerable, app-secure et ui seront ajoutés
-#  aux étapes suivantes.
+#  Services : ollama (modèle local), app-vulnerable (A), app-secure (B), ui.
 # ============================================================
 
 services:
@@ -20,10 +18,13 @@ services:
       - OLLAMA_KEEP_ALIVE=30m              # garde le modèle chargé en mémoire entre deux requêtes
       - OLLAMA_NUM_PARALLEL=1              # une requête à la fois : latences comparables entre A et B
       - OLLAMA_NO_CLOUD=1                  # interdit les modèles « cloud » d'Ollama : 100 % local
-    ports:
-      # Exposé UNIQUEMENT sur la machine locale (127.0.0.1), pour les tests.
-      # Rien n'est accessible depuis le réseau extérieur.
-      - "127.0.0.1:11434:11434"
+    # AUCUN port ouvert sur ta machine (protection P4). Ollama n'a pas
+    # d'authentification : tout programme capable de joindre le port 11434 peut
+    # interroger le modèle, le supprimer ou en télécharger un autre, en
+    # contournant toutes les protections de la version B. Seuls les services du
+    # réseau interne « lab » peuvent donc lui parler.
+    # Pour un dépannage, le port peut être rouvert temporairement :
+    #   docker compose -f docker-compose.yml -f docker-compose.debug.yml up -d ollama
     networks:
       - lab
       - telechargement
@@ -133,6 +134,7 @@ services:
       - PROTECTION_SORTIE_DONNEES=${PROTECTION_SORTIE_DONNEES:-1}
       - PROTECTION_SORTIE_HTML=${PROTECTION_SORTIE_HTML:-1}
       - GUARD_MODEL=${GUARD_MODEL:-llama-guard3:1b}
+      - PROTECTION_JOURNAL_MASQUE=${PROTECTION_JOURNAL_MASQUE:-1}
       - SECRET_DANS_PROMPT=${SECRET_DANS_PROMPT:-0}   # réglage d'analyse, voir app/secure/protections.py
     volumes:
       - ./logs:/projet/logs
