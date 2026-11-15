@@ -38,6 +38,12 @@ class Protections:
     outils: bool
     # Remboursement et e-mail mis en attente d'une confirmation du client
     confirmation: bool
+    # Filtre de sortie : canary et codes internes masqués (A3, A4)
+    sortie_secrets: bool
+    # Filtre de sortie : données personnelles des autres clients masquées (A8)
+    sortie_donnees: bool
+    # Filtre de sortie : images, liens externes et HTML neutralisés (A7)
+    sortie_html: bool
     # RÉGLAGE D'ANALYSE, désactivé par défaut. La vraie défense est de ne PAS mettre
     # de secret dans le prompt. Mais sans secret, les fuites tombent à zéro quoi
     # qu'il arrive, et on ne peut plus mesurer l'effet du filtre de sortie seul.
@@ -58,5 +64,8 @@ def charger_protections() -> Protections:
         documents=interrupteur("PROTECTION_DOCUMENTS", True),
         outils=interrupteur("PROTECTION_OUTILS", True),
         confirmation=interrupteur("PROTECTION_CONFIRMATION", True),
+        sortie_secrets=interrupteur("PROTECTION_SORTIE_SECRETS", True),
+        sortie_donnees=interrupteur("PROTECTION_SORTIE_DONNEES", True),
+        sortie_html=interrupteur("PROTECTION_SORTIE_HTML", True),
         secret_dans_prompt=interrupteur("SECRET_DANS_PROMPT", False),
     )

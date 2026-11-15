@@ -6,14 +6,14 @@ Dans Docker :       service « app-secure » (réseau interne uniquement)
 
 Chemin d'une question (identique à la version A, plus les protections) :
   question -> FILTRE D'ENTRÉE -> CLASSIFIEUR -> recherche RAG -> NETTOYAGE DES DOCUMENTS
-           -> OUTILS CONTRÔLÉS -> prompt durci -> modèle (+ outils)
+           -> OUTILS CONTRÔLÉS -> FILTRE DE SORTIE -> prompt durci -> modèle (+ outils)
            -> journal -> réponse
 
 Le modèle, les données, le RAG et les outils viennent de app/shared/, comme
 pour A : les deux versions ne diffèrent QUE par les protections.
 Protections en place pour l'instant : prompt système durci, filtre d'entrée,
 classifieur de sécurité, nettoyage et délimitation des documents et des résultats d'outils,
-outils en moindre privilège avec confirmation.
+outils en moindre privilège avec confirmation, filtre de sortie.
 """
 
 import time
@@ -22,8 +22,9 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from pydantic import BaseModel
 
-from app.secure.guards import classifieur, documents, filtre_entree, outils_proteges
-from app.secure.guards.prompt_durci import construire_prompt_durci
+from app.secure.guards import (classifieur, documents, filtre_entree, filtre_sortie,
+                               outils_proteges)
+from app.secure.guards.prompt_durci import REGLES, construire_prompt_durci
 from app.secure.protections import charger_protections
 from app.shared.config import charger_config
 from app.shared.journal import journaliser
@@ -133,6 +134,9 @@ def chat(question: Question):
         passages, alertes_documents = documents.nettoyer_passages(passages)
         alertes += alertes_documents
         fonctions = documents.proteger_outils(fonctions, alertes)
+    if protections.sortie_secrets:
+        # Un secret ne doit pas sortir non plus par le texte d'un e-mail
+        fonctions = filtre_sortie.proteger_outils(fonctions, config.canary, alertes)
 
     # 2. Prompt système (durci, sans secret)
     messages = [
@@ -144,11 +148,28 @@ def chat(question: Question):
     reponse = discuter_avec_outils(config, messages, SCHEMAS_OUTILS, fonctions,
                                    graine=question.graine)
 
-    # 4. Journal et réponse. « bloque » vaut True seulement dans refuser().
+    # 4. Filtre de sortie : la réponse est corrigée par du code avant d'être renvoyée
+    texte, appels = reponse.texte, reponse.appels_outils
+    if protections.sortie_secrets:
+        texte = filtre_sortie.masquer_secrets(texte, config.canary, alertes)
+        # Les consignes internes ne doivent pas être recopiées (A3)
+        if filtre_sortie.contient_consignes(texte, REGLES):
+            alertes.append("sortie: consignes internes recopiées, réponse remplacée")
+            texte = filtre_sortie.REPONSE_SECRET
+        # Les arguments des outils sont affichés dans l'interface : masqués aussi
+        appels = [{**a, "arguments": filtre_sortie.masquer_arguments(
+                       a.get("arguments", {}), config.canary, [])} for a in appels]
+    if protections.sortie_donnees:
+        texte = filtre_sortie.masquer_donnees_personnelles(
+            texte, outils.clients, question.id_client, alertes)
+    if protections.sortie_html:
+        texte = filtre_sortie.neutraliser_contenu_actif(texte, alertes)
+
+    # 5. Journal et réponse. « bloque » vaut True seulement dans refuser().
     resultat = {
         "version": VERSION,
-        "reponse": reponse.texte,
-        "outils_appeles": reponse.appels_outils,
+        "reponse": texte,
+        "outils_appeles": appels,
         "sources": [p["source"] for p in passages],
         "latence_s": round(reponse.latence_s, 3),
         "bloque": False,
@@ -159,7 +180,7 @@ def chat(question: Question):
                 {"id_client": question.id_client, "graine": question.graine,
                  "question": question.message, "protections": protections.actives(),
                  # requête traitée, mais une anomalie a été trouvée et neutralisée
-                 **({"alerte": " ; ".join(alertes)} if alertes else {}),
+                 **({"alerte": " ; ".join(dict.fromkeys(alertes))} if alertes else {}),   # sans doublon
                  **resultat})
     return resultat
 
