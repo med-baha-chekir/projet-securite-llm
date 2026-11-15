@@ -257,11 +257,15 @@ def relire_lignes_valides(fichier) -> list[dict]:
 
 def lancer_campagne(version, repetitions, repetitions_benin, filtre_scenarios=None,
                     avec_attaques=True, avec_benin=True, dossier_sortie=None,
-                    reprendre=None) -> Path:
+                    reprendre=None, pause_s=0.0) -> Path:
     """
     reprendre : chemin d'une campagne interrompue. Ses lignes valides sont recopiées
     dans le nouveau fichier, puis seules les tentatives manquantes ou en erreur
     sont envoyées. Le fichier d'origine n'est pas modifié.
+    pause_s : attente entre deux requêtes. La version B limite le débit par client ;
+    sans pause, la campagne (qui joue le rôle d'un seul client) se ferait refuser ses
+    propres requêtes et mesurerait le limiteur au lieu des autres protections. La
+    pause n'entre pas dans la latence mesurée.
     """
     config = charger_config()
     scenarios = yaml.safe_load((RACINE / "attacks" / "scenarios.yaml").read_text(encoding="utf-8"))
@@ -290,6 +294,8 @@ def lancer_campagne(version, repetitions, repetitions_benin, filtre_scenarios=No
         ecrivain.writeheader()
         ecrivain.writerows(anciennes)
         for i, tache in enumerate(taches, start=1):
+            if pause_s and i > 1:
+                time.sleep(pause_s)
             if tache.get("rafale"):
                 resultat = envoyer_rafale(URLS[version], tache["message"],
                                           tache["element"]["id_client"], tache["graine"],
@@ -331,6 +337,9 @@ def main():
     parser.add_argument("--sans-benin", action="store_true", help="attaques uniquement")
     parser.add_argument("--sans-attaques", action="store_true", help="questions légitimes uniquement")
     parser.add_argument("--sortie", help="dossier de sortie (défaut : results/before ou after)")
+    parser.add_argument("--pause", type=float, default=0.0,
+                        help="secondes d'attente entre deux requêtes (version B : 3, pour "
+                             "rester sous sa limite de débit)")
     parser.add_argument("--reprendre", help="CSV d'une campagne interrompue : rejoue seulement "
                                             "les tentatives manquantes ou en erreur")
     args = parser.parse_args()
@@ -340,7 +349,7 @@ def main():
         repetitions_benin=args.repetitions_benin,
         filtre_scenarios=args.scenarios.split(",") if args.scenarios else None,
         avec_attaques=not args.sans_attaques, avec_benin=not args.sans_benin,
-        dossier_sortie=args.sortie, reprendre=args.reprendre,
+        dossier_sortie=args.sortie, reprendre=args.reprendre, pause_s=args.pause,
     )
 
 

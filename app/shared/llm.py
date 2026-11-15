@@ -32,10 +32,13 @@ class ReponseLLM:
 
 
 def appeler_modele(config: Config, messages: list, outils: list | None = None,
-                   graine: int | None = None):
+                   graine: int | None = None, options: dict | None = None):
     """
     Un seul aller-retour avec Ollama. Température et graine viennent TOUJOURS
     de la configuration, pour que A et B soient appelés de la même façon.
+    « options » (facultatif) : options Ollama en plus, utilisées seulement par
+    les protections de la version B (ex. num_predict, taille maximale de réponse).
+    La version A ne le fournit pas : son appel au modèle est inchangé.
     """
     client = ollama.Client(host=config.ollama_url)
     return client.chat(
@@ -45,13 +48,15 @@ def appeler_modele(config: Config, messages: list, outils: list | None = None,
         options={
             "temperature": config.temperature,
             "seed": config.graine if graine is None else graine,
+            **(options or {}),
         },
     )
 
 
 def discuter_avec_outils(config: Config, messages: list, schemas_outils: list,
                          fonctions_outils: dict[str, Callable],
-                         graine: int | None = None, max_tours: int = 3) -> ReponseLLM:
+                         graine: int | None = None, max_tours: int = 3,
+                         options: dict | None = None) -> ReponseLLM:
     """
     Boucle « le modèle demande un outil -> on l'exécute -> on lui renvoie le résultat ».
 
@@ -64,7 +69,9 @@ def discuter_avec_outils(config: Config, messages: list, schemas_outils: list,
     debut = time.perf_counter()
 
     for _ in range(max_tours):
-        reponse = appeler_modele(config, messages, schemas_outils, graine)
+        # Sans « options » (version A), l'appel est exactement celui d'avant
+        supplement = {"options": options} if options else {}
+        reponse = appeler_modele(config, messages, schemas_outils, graine, **supplement)
         message = reponse.message
 
         # Pas de demande d'outil : c'est la réponse finale

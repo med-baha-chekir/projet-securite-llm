@@ -5,7 +5,7 @@ Lancement local :   uvicorn app.secure.main:app --port 8001
 Dans Docker :       service « app-secure » (réseau interne uniquement)
 
 Chemin d'une question (identique à la version A, plus les protections) :
-  question -> FILTRE D'ENTRÉE -> CLASSIFIEUR -> recherche RAG -> NETTOYAGE DES DOCUMENTS
+  question -> LIMITE DE DÉBIT -> FILTRE D'ENTRÉE -> CLASSIFIEUR -> recherche RAG -> NETTOYAGE DES DOCUMENTS
            -> OUTILS CONTRÔLÉS -> FILTRE DE SORTIE -> prompt durci -> modèle (+ outils)
            -> journal -> réponse
 
@@ -14,17 +14,18 @@ pour A : les deux versions ne diffèrent QUE par les protections.
 Protections en place pour l'instant : prompt système durci, filtre d'entrée,
 classifieur de sécurité, nettoyage et délimitation des documents et des résultats d'outils,
 outils en moindre privilège avec confirmation, minimisation des données,
-filtre de sortie.
+filtre de sortie, limite de débit et taille maximale de réponse.
 """
 
 import time
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from app.secure.guards import (classifieur, documents, filtre_entree, filtre_sortie,
-                               minimisation, outils_proteges)
+                               limites, minimisation, outils_proteges)
 from app.secure.guards.prompt_durci import REGLES, construire_prompt_durci
 from app.secure.protections import charger_protections
 from app.shared.config import charger_config
@@ -40,6 +41,7 @@ config = charger_config()
 protections = charger_protections()
 base = BaseDocumentaire(config)
 outils = BoiteOutils(config)
+limiteur = limites.LimiteurDebit()   # un seau à jetons par client
 
 
 @asynccontextmanager
@@ -102,6 +104,11 @@ def chat(question: Question):
     debut = time.perf_counter()
     message = question.message
 
+    # Limite de débit : contrôlée en premier, avant tout calcul
+    if protections.debit and not limiteur.autoriser(question.id_client.strip().upper()):
+        # Code HTTP 429 « trop de requêtes » : c'est le code standard pour ce cas
+        return JSONResponse(status_code=429, content=refuser(question, "debit", debut))
+
     # 0. Filtre d'entrée : le modèle ne voit jamais un message refusé
     if protections.taille_max and not filtre_entree.taille_acceptable(message):
         return refuser(question, "taille_max", debut)
@@ -154,8 +161,10 @@ def chat(question: Question):
     ]
 
     # 3. Appel au modèle, avec les outils contrôlés
+    # La génération s'arrête après MAX_TOKENS_REPONSE tokens (réponse sans fin impossible)
+    options = {"num_predict": limites.MAX_TOKENS_REPONSE} if protections.taille_reponse else None
     reponse = discuter_avec_outils(config, messages, SCHEMAS_OUTILS, fonctions,
-                                   graine=question.graine)
+                                   graine=question.graine, options=options)
 
     # 4. Filtre de sortie : la réponse est corrigée par du code avant d'être renvoyée
     texte, appels = reponse.texte, reponse.appels_outils

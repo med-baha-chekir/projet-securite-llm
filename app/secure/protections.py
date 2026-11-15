@@ -38,6 +38,10 @@ class Protections:
     outils: bool
     # Remboursement et e-mail mis en attente d'une confirmation du client
     confirmation: bool
+    # Limite de débit par client (A9, rafale)
+    debit: bool
+    # Taille maximale de réponse, option num_predict (A9, sortie démesurée)
+    taille_reponse: bool
     # Minimisation : fiche client réduite, documents réservés au personnel écartés (A4, A8)
     minimisation: bool
     # Filtre de sortie : canary et codes internes masqués (A3, A4)
@@ -66,6 +70,8 @@ def charger_protections() -> Protections:
         documents=interrupteur("PROTECTION_DOCUMENTS", True),
         outils=interrupteur("PROTECTION_OUTILS", True),
         confirmation=interrupteur("PROTECTION_CONFIRMATION", True),
+        debit=interrupteur("PROTECTION_DEBIT", True),
+        taille_reponse=interrupteur("PROTECTION_TAILLE_REPONSE", True),
         minimisation=interrupteur("PROTECTION_MINIMISATION", True),
         sortie_secrets=interrupteur("PROTECTION_SORTIE_SECRETS", True),
         sortie_donnees=interrupteur("PROTECTION_SORTIE_DONNEES", True),

