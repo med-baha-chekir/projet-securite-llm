@@ -30,6 +30,8 @@ class Protections:
     taille_max: bool
     # Filtre d'entrée : nettoyage des caractères invisibles + détection d'injection (A1, A2, A3, A10)
     filtre_injection: bool
+    # Classifieur de sécurité Llama Guard : juge le sens du message (contenu dangereux)
+    classifieur: bool
     # RÉGLAGE D'ANALYSE, désactivé par défaut. La vraie défense est de ne PAS mettre
     # de secret dans le prompt. Mais sans secret, les fuites tombent à zéro quoi
     # qu'il arrive, et on ne peut plus mesurer l'effet du filtre de sortie seul.
@@ -46,5 +48,6 @@ def charger_protections() -> Protections:
         prompt_durci=interrupteur("PROTECTION_PROMPT_DURCI", True),
         taille_max=interrupteur("PROTECTION_TAILLE_MAX", True),
         filtre_injection=interrupteur("PROTECTION_FILTRE_INJECTION", True),
+        classifieur=interrupteur("PROTECTION_CLASSIFIEUR", True),
         secret_dans_prompt=interrupteur("SECRET_DANS_PROMPT", False),
     )

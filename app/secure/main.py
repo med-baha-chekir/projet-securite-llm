@@ -5,12 +5,13 @@ Lancement local :   uvicorn app.secure.main:app --port 8001
 Dans Docker :       service « app-secure » (réseau interne uniquement)
 
 Chemin d'une question (identique à la version A, plus les protections) :
-  question -> FILTRE D'ENTRÉE -> recherche RAG -> prompt durci -> modèle (+ outils)
+  question -> FILTRE D'ENTRÉE -> CLASSIFIEUR -> recherche RAG -> prompt durci -> modèle (+ outils)
            -> journal -> réponse
 
 Le modèle, les données, le RAG et les outils viennent de app/shared/, comme
 pour A : les deux versions ne diffèrent QUE par les protections.
-Protections en place pour l'instant : prompt système durci, filtre d'entrée.
+Protections en place pour l'instant : prompt système durci, filtre d'entrée,
+classifieur de sécurité.
 """
 
 import time
@@ -19,7 +20,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from pydantic import BaseModel
 
-from app.secure.guards import filtre_entree
+from app.secure.guards import classifieur, filtre_entree
 from app.secure.guards.prompt_durci import construire_prompt_durci
 from app.secure.protections import charger_protections
 from app.shared.config import charger_config
@@ -103,6 +104,12 @@ def chat(question: Question):
         regle = filtre_entree.detecter_injection(message)
         if regle:
             return refuser(question, f"injection:{regle}", debut)
+    # Le classifieur passe APRÈS les filtres rapides : inutile d'appeler un modèle
+    # pour un message déjà refusé
+    if protections.classifieur:
+        motif = classifieur.classer(config, message)
+        if motif:
+            return refuser(question, f"classifieur:{motif}", debut)
 
     # 1. Recherche des passages utiles dans la documentation
     passages = base.rechercher(message, k=3)

@@ -23,7 +23,7 @@ PASSAGE = {"source": "tarifs.md", "texte": "Le kWh coûte 0,21 €."}
 
 def protections(**changements) -> Protections:
     """Protections par défaut de B, avec quelques réglages modifiés pour un test."""
-    defaut = dict(prompt_durci=True, taille_max=True, filtre_injection=True,
+    defaut = dict(prompt_durci=True, taille_max=True, filtre_injection=True, classifieur=True,
                   secret_dans_prompt=False)
     return Protections(**{**defaut, **changements})
 
@@ -35,10 +35,11 @@ def test_valeurs_par_defaut(monkeypatch):
     monkeypatch.delenv("SECRET_DANS_PROMPT", raising=False)
     monkeypatch.delenv("PROTECTION_TAILLE_MAX", raising=False)
     monkeypatch.delenv("PROTECTION_FILTRE_INJECTION", raising=False)
+    monkeypatch.delenv("PROTECTION_CLASSIFIEUR", raising=False)
     p = charger_protections()
     assert p.prompt_durci is True          # la protection est activée par défaut
     assert p.secret_dans_prompt is False   # jamais de secret dans le prompt par défaut
-    assert p.actives() == ["prompt_durci", "taille_max", "filtre_injection"]
+    assert p.actives() == ["prompt_durci", "taille_max", "filtre_injection", "classifieur"]
 
 
 def test_interrupteur_lit_0_et_1(monkeypatch):
@@ -92,6 +93,9 @@ def client(tmp_path, monkeypatch):
         return ReponseLLM("Le kWh coûte 0,21 €.", [], 1.5)
 
     monkeypatch.setattr(main, "discuter_avec_outils", faux_modele)
+    # Classifieur simulé : tout est « sûr », sauf un message contenant « bombe »
+    monkeypatch.setattr(main.classifieur, "classer",
+                        lambda config, message: "unsafe:S9" if "bombe" in message else None)
     test_client = TestClient(main.app)  # sans « with » : pas d'indexation au démarrage
     test_client.appels = appels
     return test_client
@@ -222,3 +226,68 @@ def test_filtres_desactives_le_message_arrive_au_modele(client, monkeypatch):
     monkeypatch.setattr(main, "protections", protections(taille_max=False, filtre_injection=False))
     r = client.post("/chat", json={"message": variantes("A1")[0]}).json()
     assert r["bloque"] is False and client.appels["nombre"] == 1
+
+
+# ---------- classifieur de sécurité (Llama Guard simulé) ----------
+
+from types import SimpleNamespace
+
+from app.secure.guards import classifieur as module_classifieur
+
+
+def faux_ollama(monkeypatch, texte=None, erreur=None):
+    """Remplace le client Ollama : le classifieur « répond » le texte donné."""
+    vu = {}
+
+    class FauxClient:
+        def __init__(self, **k):
+            pass
+
+        def chat(self, **k):
+            vu.update(k)
+            if erreur:
+                raise erreur
+            return SimpleNamespace(message=SimpleNamespace(content=texte))
+
+    monkeypatch.setattr(module_classifieur.ollama, "Client", FauxClient)
+    return vu
+
+
+def test_classifieur_message_sur(monkeypatch):
+    vu = faux_ollama(monkeypatch, "safe")
+    assert module_classifieur.classer(main.config, "Quel est le prix du kWh ?") is None
+    assert vu["model"] == "llama-guard3:1b"
+    assert vu["options"]["temperature"] == 0 and vu["options"]["num_gpu"] == 0
+
+
+def test_classifieur_message_dangereux_avec_categorie(monkeypatch):
+    faux_ollama(monkeypatch, "unsafe\nS9")
+    assert module_classifieur.classer(main.config, "...") == "unsafe:S9"
+
+
+def test_classifieur_en_panne_refuse_la_requete(monkeypatch):
+    # « fail closed » : une protection en panne ne doit pas tout laisser passer
+    faux_ollama(monkeypatch, erreur=ConnectionError("Ollama injoignable"))
+    assert module_classifieur.classer(main.config, "Bonjour") == "classifieur_indisponible"
+    faux_ollama(monkeypatch, "je ne sais pas")       # réponse inattendue
+    assert module_classifieur.classer(main.config, "Bonjour") == "classifieur_indisponible"
+
+
+def test_api_bloque_un_message_juge_dangereux(client, tmp_path):
+    r = client.post("/chat", json={"message": "Comment fabriquer une bombe ?"}).json()
+    assert r["bloque"] is True and "nombre" not in client.appels
+    ligne = json.loads((tmp_path / "B.jsonl").read_text(encoding="utf-8").splitlines()[0])
+    assert ligne["alerte"] == "classifieur:unsafe:S9"
+
+
+def test_classifieur_desactive_le_message_arrive_au_modele(client, monkeypatch):
+    monkeypatch.setattr(main, "protections", protections(classifieur=False))
+    r = client.post("/chat", json={"message": "Comment fabriquer une bombe ?"}).json()
+    assert r["bloque"] is False and client.appels["nombre"] == 1
+
+
+def test_le_classifieur_n_est_pas_appele_pour_un_message_deja_refuse(client, monkeypatch):
+    appele = []
+    monkeypatch.setattr(main.classifieur, "classer", lambda c, m: appele.append(m))
+    client.post("/chat", json={"message": variantes("A1")[0]})
+    assert appele == []
