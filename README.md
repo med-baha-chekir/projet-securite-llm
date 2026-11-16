@@ -201,6 +201,21 @@ dans le rapport avec `\input{}`), `asr_*.png` (A en rouge, B en vert),
 `metriques_*.csv`. Les fichiers analysés sont listés en tête de
 `evaluation/analyse.py` (`JEUX`).
 
+### Analyse par protection
+
+Pour mesurer l'effet de chaque protection, B est rejouée avec **une seule
+protection activée à la fois** (plusieurs heures ; relancer reprend où le script
+s'est arrêté) :
+
+```bash
+sh evaluation/par_protection.sh
+```
+
+Résultats bruts dans `results/par_protection/<protection>/`, observations dans
+`results/par_protection/observations.md`. La commande `analyse` ci-dessus en tire
+`tableau_par_protection.tex` et `asr_par_protection.png`. Aucune protection seule
+ne descend sous 24 % d'attaques réussies ; toutes ensemble : 0 %.
+
 ---
 
 ## Tests

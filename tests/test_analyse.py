@@ -116,3 +116,56 @@ def test_les_fichiers_officiels_existent():
     for jeu in analyse.JEUX.values():
         for chemin in jeu["A"] + jeu["B"] + [jeu["scenarios"]]:
             assert (analyse.RACINE / chemin).exists(), chemin
+
+
+# ---------- analyse par protection ----------
+
+def test_analyse_par_protection(campagne_a, tmp_path, monkeypatch):
+    # Deux configurations : le témoin (T1 réussit 2/2) et « outils » (0/2).
+    # Dans « outils », un ancien fichier interrompu est remplacé par sa reprise.
+    resultats = tmp_path / "par_protection"
+    (resultats / "aucune").mkdir(parents=True)
+    (resultats / "outils").mkdir()
+    ecrire(resultats / "aucune", "campagne_B_1.csv", [ligne("T1", 1, True), ligne("T1", 2, True), ligne("T2", 1, True)])
+    ecrire(resultats / "outils", "campagne_B_1.csv", [ligne("T1", 1, erreur="TimeoutError")])
+    ecrire(resultats / "outils", "campagne_B_2.csv", [ligne("T1", 1), ligne("T1", 2), ligne("T2", 1)])
+    b = ecrire(tmp_path, "b.csv", [ligne("T1", 1), ligne("T2", 1)])
+    monkeypatch.setitem(analyse.JEUX, "officiel",
+                        {"titre": "t", "scenarios": "x", "A": [campagne_a], "B": [b]})
+
+    sortie = tmp_path / "figures"
+    matrice = analyse.analyser_par_protection(resultats, sortie)
+
+    assert list(matrice.index) == ["Version A", "Aucune (témoin)", "Outils en moindre privilège",
+                                   "Toutes (version B)"]
+    assert matrice.loc["Aucune (témoin)", "T1"] == 100.0
+    assert matrice.loc["Outils en moindre privilège", "Global"] == 0.0
+    assert matrice.loc["Version A", "Global"] == 75.0
+    tableau = (sortie / "tableau_par_protection.tex").read_text(encoding="utf-8")
+    assert "Aucune (témoin) & 100 &" in tableau and "n.m." in tableau   # T2 jamais mesuré sur A
+    assert (sortie / "asr_par_protection.png").stat().st_size > 5000
+
+
+def test_analyse_par_protection_sans_resultats(tmp_path):
+    assert analyse.analyser_par_protection(tmp_path / "absent", tmp_path) is None
+
+
+def test_chaque_protection_mesuree_a_un_nom():
+    # Les configurations de par_protection.sh et celles de l'analyse doivent rester alignées
+    script = (analyse.RACINE / "evaluation" / "par_protection.sh").read_text(encoding="utf-8")
+    liste = script.split('PROTECTIONS="')[1].split('"')[0].split()
+    assert ["aucune"] + liste == list(analyse.CONFIGURATIONS)
+
+
+def test_pas_d_asr_global_pour_une_configuration_partielle(campagne_a, tmp_path, monkeypatch):
+    # « sortie_html » n'a été rejouée que sur un scénario : pas de « Global » trompeur
+    resultats = tmp_path / "par_protection"
+    (resultats / "sortie_html").mkdir(parents=True)
+    ecrire(resultats / "sortie_html", "campagne_B_1.csv", [ligne("T1", 1), ligne("T1", 2)])
+    b = ecrire(tmp_path, "b.csv", [ligne("T1", 1), ligne("T2", 1)])
+    monkeypatch.setitem(analyse.JEUX, "officiel",
+                        {"titre": "t", "scenarios": "x", "A": [campagne_a], "B": [b]})
+    matrice = analyse.analyser_par_protection(resultats, tmp_path / "figures")
+    assert matrice.loc["Sortie : HTML neutralisé", "T1"] == 0.0
+    assert matrice.loc["Sortie : HTML neutralisé"].isna()["Global"]
+    assert matrice.loc["Toutes (version B)", "Global"] == 0.0

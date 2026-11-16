@@ -12,6 +12,8 @@ Fichiers produits dans results/figures/ :
     synthese_<jeu>.tex     métriques globales (ASR, canary, faux positifs, latence)
     asr_<jeu>.png          graphique en barres, A en rouge et B en vert
     metriques_<jeu>.csv    les mêmes chiffres, relisibles par un tableur
+    tableau_par_protection.tex / asr_par_protection.png / metriques_par_protection.csv
+                           ASR de B avec UNE SEULE protection activée (voir par_protection.sh)
 """
 
 import math
@@ -43,6 +45,26 @@ JEUX = {
               "results/nouvelles/campagne_A_20261116-030506.csv"],   # reprise des questions légitimes
         "B": ["results/nouvelles/campagne_B_20261116-023838.csv"],
     },
+}
+
+# Analyse par protection : un sous-dossier par configuration (evaluation/par_protection.sh)
+DOSSIER_PAR_PROTECTION = "results/par_protection"
+# Nom lisible de chaque configuration, dans l'ordre du traitement d'une requête
+CONFIGURATIONS = {
+    "aucune": "Aucune (témoin)",
+    "prompt_durci": "Prompt durci, sans secret",
+    "taille_max": "Taille max du message",
+    "filtre_injection": "Filtre d'injection",
+    "classifieur": "Classifieur Llama Guard",
+    "documents": "Délimitation des documents",
+    "outils": "Outils en moindre privilège",
+    "confirmation": "Confirmation des actions",
+    "debit": "Limite de débit",
+    "taille_reponse": "Taille max de réponse",
+    "minimisation": "Minimisation des données",
+    "sortie_secrets": "Sortie : secrets masqués",
+    "sortie_donnees": "Sortie : données personnelles",
+    "sortie_html": "Sortie : HTML neutralisé",
 }
 
 CLE = ["type", "id", "variante", "repetition"]     # identifie une tentative
@@ -252,6 +274,103 @@ def graphique_asr(asr_a: pd.DataFrame, asr_b: pd.DataFrame, titre: str, fichier:
     plt.close(fig)
 
 
+# ---------- analyse par protection ----------
+
+def charger_par_protection(dossier: Path) -> dict:
+    """ASR par scénario de chaque configuration présente dans le dossier.
+    Le fichier le plus récent de chaque sous-dossier fait foi (il contient les reprises)."""
+    resultats = {}
+    for config in CONFIGURATIONS:
+        fichiers = sorted((dossier / config).glob("campagne_B_*.csv"))
+        if fichiers:
+            resultats[config] = asr_par_scenario(charger([fichiers[-1]]))
+    return resultats
+
+
+def matrice_par_protection(par_config: dict, avant: tuple, apres: tuple) -> pd.DataFrame:
+    """Une ligne par configuration, une colonne par scénario, plus « Global ». Valeurs : ASR en %.
+    avant, apres : lignes de comparaison (nom, tableau ASR) placées en tête et en fin."""
+    lignes = {}
+    tous = [avant] + [(CONFIGURATIONS[c], a) for c, a in par_config.items()] + [apres]
+    nb_scenarios = len(avant[1])
+    for nom, asr in tous:
+        ligne = asr.set_index("id")["asr"].to_dict()
+        total = int(asr["total"].sum())
+        # Un ASR global n'a de sens que si TOUS les scénarios ont été rejoués :
+        # une configuration mesurée sur ses seuls scénarios ciblés n'en a pas.
+        complet = total > 0 and len(asr) == nb_scenarios
+        ligne["Global"] = 100 * asr["reussies"].sum() / total if complet else float("nan")
+        lignes[nom] = ligne
+    return pd.DataFrame.from_dict(lignes, orient="index")
+
+
+def tableau_par_protection_latex(matrice: pd.DataFrame) -> str:
+    """Tableau ASR (%) : configurations en lignes, scénarios en colonnes."""
+    def case(v):
+        return "n.m." if pd.isna(v) else f"{v:.0f}"
+    lignes = [
+        "% Généré par evaluation/analyse.py : ne pas modifier à la main",
+        "% ASR en pourcentage ; n.m. = non mesuré (délais dépassés, ou scénario non rejoué pour cette protection)",
+        "\\begin{tabular}{@{}l" + "r" * len(matrice.columns) + "@{}}",
+        "\\toprule",
+        "Protection activée & " + " & ".join(matrice.columns) + " \\\\",
+        "\\midrule",
+    ]
+    for nom, valeurs in matrice.iterrows():
+        lignes.append(f"{nom} & " + " & ".join(case(v) for v in valeurs) + " \\\\")
+    lignes += ["\\bottomrule", "\\end{tabular}"]
+    return "\n".join(lignes) + "\n"
+
+
+def graphique_par_protection(matrice: pd.DataFrame, fichier: Path) -> None:
+    """Carte de chaleur : plus la case est rouge foncé, plus l'attaque réussit.
+    Une seule teinte, du clair au foncé ; la valeur est écrite dans chaque case."""
+    fig, ax = plt.subplots(figsize=(10, 0.42 * len(matrice) + 1.6))
+    image = ax.imshow(matrice.to_numpy(dtype=float), cmap="Reds", vmin=0, vmax=100, aspect="auto")
+    for i, (_, valeurs) in enumerate(matrice.iterrows()):
+        for j, v in enumerate(valeurs):
+            texte = "n.m." if pd.isna(v) else f"{v:.0f}"
+            ax.text(j, i, texte, ha="center", va="center", fontsize=8.5,
+                    color="white" if (not pd.isna(v) and v >= 60) else "#222222")
+    ax.set_xticks(range(len(matrice.columns)), matrice.columns)
+    ax.set_yticks(range(len(matrice)), matrice.index)
+    ax.xaxis.tick_top()
+    ax.tick_params(length=0)
+    # Filets blancs entre les cases
+    ax.set_xticks([x - 0.5 for x in range(1, len(matrice.columns))], minor=True)
+    ax.set_yticks([y - 0.5 for y in range(1, len(matrice))], minor=True)
+    ax.grid(which="minor", color="white", linewidth=2)
+    ax.tick_params(which="minor", length=0)
+    for cote in ax.spines.values():
+        cote.set_visible(False)
+    ax.set_title("ASR (%) de la version B avec une seule protection activée",
+                 loc="left", fontsize=12, fontweight="bold", pad=28)
+    fig.colorbar(image, ax=ax, fraction=0.025, pad=0.02, label="ASR (%)")
+    fig.text(0.99, 0.01, "n.m. : non mesuré (délais dépassés, ou scénario non rejoué pour cette protection)", ha="right", fontsize=7.5, color="#555555")
+    fig.tight_layout()
+    fig.savefig(fichier, dpi=200)
+    plt.close(fig)
+
+
+def analyser_par_protection(dossier_resultats: Path, dossier: Path):
+    """Produit le tableau, le graphique et le CSV de l'analyse par protection.
+    Renvoie la matrice, ou None si aucune configuration n'a encore été mesurée."""
+    par_config = charger_par_protection(dossier_resultats)
+    if not par_config:
+        return None
+    officiel = JEUX["officiel"]
+    matrice = matrice_par_protection(
+        par_config,
+        avant=("Version A", asr_par_scenario(charger(officiel["A"]))),
+        apres=("Toutes (version B)", asr_par_scenario(charger(officiel["B"]))))
+    dossier.mkdir(parents=True, exist_ok=True)
+    (dossier / "tableau_par_protection.tex").write_text(
+        tableau_par_protection_latex(matrice), encoding="utf-8")
+    graphique_par_protection(matrice, dossier / "asr_par_protection.png")
+    matrice.round(1).to_csv(dossier / "metriques_par_protection.csv", index_label="configuration")
+    return matrice
+
+
 # ---------- programme principal ----------
 
 def analyser_jeu(nom: str, jeu: dict, dossier: Path) -> dict:
@@ -279,6 +398,10 @@ def main():
             print(f"  {version} : ASR {v['attaques_reussies']}/{v['attaques']}, "
                   f"canary {v['fuites_canary']}, faux positifs {v['faux_positifs']}/{v['legitimes']}, "
                   f"latence médiane {v['latence_mediane_s']:.1f} s, non jugées {v['erreurs']}")
+    matrice = analyser_par_protection(RACINE / DOSSIER_PAR_PROTECTION, DOSSIER_FIGURES)
+    if matrice is not None:
+        print("\n== ASR (%) par protection activée seule ==")
+        print(matrice.round(0).to_string(na_rep="n.m."))
     print(f"\nFichiers écrits dans {DOSSIER_FIGURES}")
 
 
