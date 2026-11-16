@@ -1,0 +1,17 @@
+# ============================================================
+#  Image de l'analyse des résultats (tableaux LaTeX, graphiques)
+#  Le code et les résultats sont montés au lancement : l'image ne
+#  contient que les bibliothèques (pandas, matplotlib).
+# ============================================================
+FROM python:3.12-slim
+
+WORKDIR /projet
+ENV PYTHONPATH=/projet MPLCONFIGDIR=/tmp/matplotlib
+
+COPY requirements-analyse.txt .
+RUN pip install --no-cache-dir -r requirements-analyse.txt
+
+# Utilisateur sans privilèges
+RUN useradd --create-home labo
+USER labo
+ENTRYPOINT ["python", "evaluation/analyse.py"]

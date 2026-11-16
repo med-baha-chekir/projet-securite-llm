@@ -210,6 +210,24 @@ services:
       app-vulnerable:
         condition: service_healthy
 
+  # --- Analyse des résultats (P6) : tableaux LaTeX et graphiques, À LA DEMANDE ---
+  #   docker compose --profile outils run --rm analyse
+  # Lit seulement les fichiers de results/ : aucun accès réseau n'est nécessaire.
+  analyse:
+    build:
+      context: .
+      dockerfile: Dockerfile.analyse
+    image: labo-llm-analyse
+    profiles: ["outils"]
+    network_mode: none                     # aucun réseau : l'analyse ne parle à personne
+    volumes:
+      - ./evaluation:/projet/evaluation:ro
+      - ./attacks:/projet/attacks:ro       # titres des scénarios
+      - ./app:/projet/app:ro               # seulement pour les tests (format des CSV)
+      - ./tests:/projet/tests:ro           # pour rejouer tests/test_analyse.py dans l'image
+      - ./pytest.ini:/projet/pytest.ini:ro
+      - ./results:/projet/results          # lit les CSV bruts, écrit results/figures/
+
 networks:
   # Réseau INTERNE du labo : aucun accès à Internet.
   # Les applications A et B seront branchées uniquement ici.

@@ -183,6 +183,24 @@ tentative, canary masqué. Analyse : `observations.md` dans chaque dossier.
 Ces chiffres portent sur les attaques connues A1 à A10, sur lesquelles les filtres
 ont été écrits : voir les limites dans `results/after/observations.md`.
 
+Sur un jeu d'attaques **nouvelles** (N1 à N8, `attacks/nouvelles/`), jamais vues
+par les filtres, B laisse passer 10/105 attaques (10 %) contre 58/95 (61 %) pour A :
+voir `results/nouvelles/observations.md`.
+
+### Tableaux et graphiques
+
+Les tableaux LaTeX et les graphiques sont régénérés à partir des fichiers bruts,
+jamais saisis à la main :
+
+```bash
+docker compose --profile outils run --rm analyse
+```
+
+Résultat dans `results/figures/` : `tableau_*.tex` et `synthese_*.tex` (à inclure
+dans le rapport avec `\input{}`), `asr_*.png` (A en rouge, B en vert),
+`metriques_*.csv`. Les fichiers analysés sont listés en tête de
+`evaluation/analyse.py` (`JEUX`).
+
 ---
 
 ## Tests
@@ -207,6 +225,13 @@ Ils sont rejoués dans le labo, avec une vérification de A et B :
 
 ```bash
 docker compose --profile outils run --rm --entrypoint python campagne -m evaluation.verifier_labo
+```
+
+Les tests de l'analyse (`tests/test_analyse.py`) ont besoin de pandas et de
+matplotlib, installés seulement dans l'image `analyse` :
+
+```bash
+docker compose --profile outils run --rm --entrypoint python analyse -m pytest tests/test_analyse.py -q -p no:cacheprovider
 ```
 
 ---
