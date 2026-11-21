@@ -37,3 +37,6 @@ logs/
 
 # --- Secret de test (canary), généré automatiquement ---
 secrets/
+
+# --- Vidéo de démonstration : séquences brutes et montage (fichiers lourds) ---
+demo/sortie/

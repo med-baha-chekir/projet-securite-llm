@@ -112,3 +112,19 @@ def test_le_bouton_confirme_l_action(interface_b):
     interface_b.button(key="confirmer-1-ab12cd34").click().run()
     assert interface_b.confirmees == [("B", "ab12cd34", "C001")]
     assert any("remboursement enregistré" in s.value for s in interface_b.success)
+
+
+# ---------- état d'un appel d'outil (affiché dans « Détails ») ----------
+
+def test_etat_d_un_appel_refuse_par_b():
+    appel = {"nom": "creer_remboursement", "arguments": {"id_client": "C006", "montant": 9999},
+             "resultat": {"refuse": "action pour un autre client refusée"}}
+    assert api.etat_appel(appel).startswith("⛔ refusé")
+
+
+def test_etat_d_un_appel_execute_ou_en_attente():
+    assert api.etat_appel({"nom": "x", "arguments": {}, "resultat": {"statut": "ok"}}) == "✅ exécuté"
+    assert api.etat_appel({"nom": "x", "arguments": {}}) == "✅ exécuté"
+    en_attente = {"resultat": {"statut": "en attente de confirmation par le client"}}
+    assert api.etat_appel(en_attente).startswith("✋")
+    assert api.etat_appel({"resultat": {"erreur": "client inconnu"}}).startswith("⚠️")

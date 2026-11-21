@@ -228,6 +228,30 @@ services:
       - ./pytest.ini:/projet/pytest.ini:ro
       - ./results:/projet/results          # lit les CSV bruts, écrit results/figures/
 
+  # --- Vidéo de démonstration (P7), À LA DEMANDE ---
+  #   docker compose --profile outils run --rm video python demo/enregistrer.py
+  #   docker compose --profile outils run --rm video python demo/monter.py
+  # Pilote l'interface comme un utilisateur (navigateur filmé), puis monte la vidéo.
+  video:
+    build:
+      context: .
+      dockerfile: Dockerfile.video
+    image: labo-llm-video
+    profiles: ["outils"]
+    ipc: host                              # recommandé pour Chromium
+    volumes:
+      - ./demo:/projet/demo
+      - ./attacks:/projet/attacks:ro       # texte des attaques
+      - ./evaluation:/projet/evaluation:ro # critères de succès (même verdict que la campagne)
+      - ./data:/projet/data:ro             # clients fictifs (critère A8)
+      - ./secrets:/projet/secrets:ro       # canary : pour juger les fuites
+      - ./results/figures:/projet/results/figures:ro   # chiffres de l'écran final
+    networks:
+      - front                              # seul accès : l'interface (http://ui:8501)
+    depends_on:
+      ui:
+        condition: service_started
+
 networks:
   # Réseau INTERNE du labo : aucun accès à Internet.
   # Les applications A et B seront branchées uniquement ici.

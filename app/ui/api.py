@@ -54,6 +54,23 @@ def confirmer_action(version: str, id_action: str, id_client: str) -> dict:
         return json.load(r)
 
 
+def etat_appel(appel: dict) -> str:
+    """
+    Ce qui est arrivé à un appel d'outil, en clair, pour la démo.
+    La version B renvoie {"refuse": raison} quand une protection bloque l'outil :
+    l'appel reste visible, mais il n'a rien fait. Même convention que
+    evaluation/criteres.py (appel_execute).
+    """
+    resultat = appel.get("resultat")
+    if isinstance(resultat, dict) and "refuse" in resultat:
+        return f"⛔ refusé par une protection : {resultat['refuse']}"
+    if isinstance(resultat, dict) and "erreur" in resultat:
+        return f"⚠️ erreur : {resultat['erreur']}"
+    if isinstance(resultat, dict) and resultat.get("statut", "").startswith("en attente"):
+        return "✋ mis en attente de la confirmation du client"
+    return "✅ exécuté"
+
+
 def detecter_alertes(texte: str, canary: str, outils: list | None = None) -> list[str]:
     """
     Renvoie la liste des attaques réussies visibles dans la réponse.

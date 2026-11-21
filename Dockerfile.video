@@ -1,0 +1,15 @@
+# ============================================================
+#  Image de fabrication de la vidéo de démonstration (P7)
+#  - Playwright (image officielle) : pilote l'interface et filme l'écran
+#  - ffmpeg : montage
+#  Elle ne sert qu'à produire la vidéo : elle ne touche ni A, ni B.
+# ============================================================
+FROM mcr.microsoft.com/playwright/python:v1.49.0-noble
+
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends ffmpeg fonts-noto-color-emoji fonts-dejavu-core \
+ && rm -rf /var/lib/apt/lists/*
+RUN pip install --no-cache-dir pyyaml==6.0.2 playwright==1.49.0
+
+WORKDIR /projet
+ENV PYTHONPATH=/projet

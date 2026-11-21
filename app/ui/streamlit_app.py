@@ -59,8 +59,11 @@ def afficher_reponse(msg: dict) -> None:
             st.write("**Outils appelés :**")
             for appel in msg["outils"]:
                 st.code(f"{appel['nom']}({appel['arguments']})", language="python")
+                st.caption(api.etat_appel(appel))
         else:
             st.write("**Outils appelés :** aucun")
+        if msg.get("bloque"):
+            st.write("**Requête bloquée par une protection :** oui")
         st.write(f"**Latence :** {msg['latence_s']:.1f} s")
 
 
@@ -111,7 +114,7 @@ if question:
         else:
             msg = {"role": "assistant", "version": version, "texte": r["reponse"],
                    "sources": r["sources"], "outils": r["outils_appeles"],
-                   "latence_s": r["latence_s"],
+                   "latence_s": r["latence_s"], "bloque": r.get("bloque", False),
                    "a_confirmer": r.get("a_confirmer", []), "id_client": id_client}
             st.session_state.historique.append(msg)
             afficher_reponse(msg)
