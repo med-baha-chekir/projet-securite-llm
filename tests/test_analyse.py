@@ -169,3 +169,34 @@ def test_pas_d_asr_global_pour_une_configuration_partielle(campagne_a, tmp_path,
     assert matrice.loc["Sortie : HTML neutralisé", "T1"] == 0.0
     assert matrice.loc["Sortie : HTML neutralisé"].isna()["Global"]
     assert matrice.loc["Toutes (version B)", "Global"] == 0.0
+
+
+# ---------- version anglaise (rapport final en anglais) ----------
+
+def test_version_anglaise_memes_chiffres(campagne_a, tmp_path, monkeypatch):
+    b = ecrire(tmp_path, "b.csv", [ligne("T1", i) for i in range(1, 5)]
+               + [ligne("T2", 1), ligne("T2", 2), ligne("Q1", 1, type_="legitime", attendu="True")])
+    scenarios = tmp_path / "scenarios.yaml"
+    scenarios.write_text("- {id: T1, titre: 'Test un'}\n- {id: T2, titre: Test deux}\n", encoding="utf-8")
+    jeu = {"titre": "Essai", "scenarios": scenarios, "A": [campagne_a], "B": [b]}
+    sortie = tmp_path / "figures"
+    analyse.analyser_jeu("essai", jeu, sortie)
+    monkeypatch.setattr(analyse, "LANGUE", "en")
+    analyse.analyser_jeu("essai", jeu, sortie)
+
+    fr = (sortie / "synthese_essai.tex").read_text(encoding="utf-8")
+    en = (sortie / "synthese_essai_en.tex").read_text(encoding="utf-8")
+    assert "Fuites du canary & 2/4" in fr and "Canary leaks & 2/4" in en
+    assert r"10,0\,s" in fr and r"10.0\,s" in en
+    tableau_en = (sortie / "tableau_essai_en.tex").read_text(encoding="utf-8")
+    assert "not measured" in tableau_en and "Attack" in tableau_en and "non mesuré" not in tableau_en
+    assert (sortie / "asr_essai_en.png").exists() and not (sortie / "metriques_essai_en.csv").exists()
+
+
+def test_chaque_scenario_et_protection_a_un_nom_anglais():
+    for jeu in analyse.JEUX.values():
+        ids = {s["id"] for s in analyse.yaml.safe_load(
+            (analyse.RACINE / jeu["scenarios"]).read_text(encoding="utf-8"))}
+        assert ids <= set(analyse.TITRES_EN)
+    assert list(analyse.CONFIGURATIONS_EN) == list(analyse.CONFIGURATIONS)
+    assert set(analyse.TEXTES["fr"]) == set(analyse.TEXTES["en"])

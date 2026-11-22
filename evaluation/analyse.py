@@ -14,6 +14,8 @@ Fichiers produits dans results/figures/ :
     metriques_<jeu>.csv    les mêmes chiffres, relisibles par un tableur
     tableau_par_protection.tex / asr_par_protection.png / metriques_par_protection.csv
                            ASR de B avec UNE SEULE protection activée (voir par_protection.sh)
+    *_en.tex, *_en.png     les mêmes tableaux et graphiques en anglais (rapport en anglais) :
+                           mêmes chiffres, seuls les libellés changent
 """
 
 import math
@@ -66,6 +68,81 @@ CONFIGURATIONS = {
     "sortie_donnees": "Sortie : données personnelles",
     "sortie_html": "Sortie : HTML neutralisé",
 }
+
+# ---------- libellés en anglais (le rapport final est rédigé en anglais) ----------
+# Mêmes clés que ci-dessus : seuls les textes affichés changent, jamais les chiffres.
+CONFIGURATIONS_EN = {
+    "aucune": "None (control)",
+    "prompt_durci": "Hardened prompt, no secret",
+    "taille_max": "Maximum message size",
+    "filtre_injection": "Injection filter",
+    "classifieur": "Llama Guard classifier",
+    "documents": "Document delimiting",
+    "outils": "Least-privilege tools",
+    "confirmation": "Action confirmation",
+    "debit": "Rate limit",
+    "taille_reponse": "Maximum response size",
+    "minimisation": "Data minimisation",
+    "sortie_secrets": "Output: secrets masked",
+    "sortie_donnees": "Output: personal data",
+    "sortie_html": "Output: active content",
+}
+TITRES_EN = {
+    "A1": "Direct injection", "A2": "Role-play jailbreak", "A3": "System prompt extraction",
+    "A4": "Secret leakage", "A5": "Indirect injection via a RAG document", "A6": "Tool abuse",
+    "A7": "Dangerous output", "A8": "Another customer's data", "A9": "Unbounded consumption",
+    "A10": "Bypass via encoding or another language",
+    "N1": "Rephrased direct injection", "N2": "Indirect injection via user-supplied content",
+    "N3": "Instruction extraction, new wordings", "N4": "Tool abuse disguised as an ordinary request",
+    "N5": "Another customer's data, rephrased requests", "N6": "Dangerous output, other forms",
+    "N7": "Unformatted internal information", "N8": "Oversized output, other forms",
+}
+TITRES_JEUX_EN = {"officiel": "Official attacks A1 to A10",
+                  "nouvelles": "New attacks N1 to N8 (never seen by B)"}
+TEXTES = {
+    "fr": {"non_mesure": "non mesuré", "attaque": "Attaque", "ic": "IC 95", "metrique": "Métrique",
+           "m_asr": "Attaques réussies (ASR global)", "m_canary": "Fuites du canary",
+           "m_bloquees": "Attaques refusées par une protection",
+           "m_fp": "Questions légitimes bloquées (faux positifs)",
+           "m_correctes": "Réponses légitimes correctes",
+           "m_latence": "Latence médiane, question légitime",
+           "m_erreurs": "Requêtes non jugées (délai dépassé)",
+           "legende_a": "Version A (vulnérable)", "legende_b": "Version B (sécurisée)",
+           "axe_y": "Taux de succès des attaques (ASR, %)", "par_scenario": "ASR par scénario",
+           "note_ic": "Trait gris : intervalle de confiance à 95 % (Wilson)",
+           "protection": "Protection activée", "toutes": "Toutes (version B)",
+           "titre_carte": "ASR (%) de la version B avec une seule protection activée",
+           "note_nm": "n.m. : non mesuré (délais dépassés, ou scénario non rejoué pour cette protection)",
+           "nm_tex": "ASR en pourcentage ; n.m. = non mesuré (délais dépassés, ou scénario non rejoué "
+                     "pour cette protection)"},
+    "en": {"non_mesure": "not measured", "attaque": "Attack", "ic": "95 CI", "metrique": "Metric",
+           "m_asr": "Successful attacks (overall ASR)", "m_canary": "Canary leaks",
+           "m_bloquees": "Attacks refused by a protection",
+           "m_fp": "Legitimate questions blocked (false positives)",
+           "m_correctes": "Correct legitimate answers",
+           "m_latence": "Median latency, legitimate question",
+           "m_erreurs": "Requests not judged (timeout)",
+           "legende_a": "Version A (vulnerable)", "legende_b": "Version B (secured)",
+           "axe_y": "Attack success rate (ASR, %)", "par_scenario": "ASR per scenario",
+           "note_ic": "Grey line: 95% confidence interval (Wilson)",
+           "protection": "Protection enabled", "toutes": "All (version B)",
+           "titre_carte": "ASR (%) of version B with a single protection enabled",
+           "note_nm": "n.m.: not measured (timeouts, or scenario not replayed for this protection)",
+           "nm_tex": "ASR in percent; n.m. = not measured (timeouts, or scenario not replayed "
+                     "for this protection)"},
+}
+LANGUE = "fr"                                      # changée par main() pour la passe anglaise
+
+
+def tr(cle: str) -> str:
+    """Libellé dans la langue en cours."""
+    return TEXTES[LANGUE][cle]
+
+
+def suffixe() -> str:
+    """Les fichiers anglais portent le suffixe « _en » ; les fichiers français n'en ont pas."""
+    return "" if LANGUE == "fr" else "_en"
+
 
 CLE = ["type", "id", "variante", "repetition"]     # identifie une tentative
 ROUGE, VERT = "#C0392B", "#2E9E6B"                 # A, B (paire vérifiée pour les daltoniens)
@@ -152,6 +229,8 @@ def metriques_globales(df: pd.DataFrame) -> dict:
 def titres_des_scenarios(fichier) -> dict:
     """Titre court de chaque scénario, lu dans le fichier d'attaques."""
     scenarios = yaml.safe_load((RACINE / fichier).read_text(encoding="utf-8"))
+    if LANGUE == "en":
+        return {s["id"]: TITRES_EN.get(s["id"], s["titre"]) for s in scenarios}
     return {s["id"]: s["titre"].split(" (")[0] for s in scenarios}
 
 
@@ -159,14 +238,15 @@ def cellule(ligne) -> tuple[str, str]:
     """Texte de l'ASR et de son intervalle : « 9/15 (60 %) », « 36-80 % ».
     « non mesuré » si toutes les requêtes du scénario ont échoué."""
     if ligne["total"] == 0:
-        return "non mesuré", "--"
+        return tr("non_mesure"), "--"
     return (f"{ligne['reussies']}/{ligne['total']} ({ligne['asr']:.0f}\\,\\%)",
             f"{ligne['ic_bas']:.0f}--{ligne['ic_haut']:.0f}\\,\\%")
 
 
 def secondes(valeur: float) -> str:
-    """Durée à la française : « 12,6 s »."""
-    return f"{valeur:.1f}".replace(".", ",") + "\\,s"
+    """Durée : « 12,6 s » en français, « 12.6 s » en anglais."""
+    texte = f"{valeur:.1f}"
+    return (texte.replace(".", ",") if LANGUE == "fr" else texte) + "\\,s"
 
 
 def pourcentage(n: int, total: int) -> str:
@@ -181,7 +261,7 @@ def tableau_latex(asr_a: pd.DataFrame, asr_b: pd.DataFrame, titres: dict) -> str
         "\\toprule",
         " & & & \\multicolumn{2}{c}{Version A} & \\multicolumn{2}{c}{Version B} \\\\",
         "\\cmidrule(lr){4-5}\\cmidrule(l){6-7}",
-        "ID & OWASP & Attaque & ASR & IC 95\\,\\% & ASR & IC 95\\,\\% \\\\",
+        f"ID & OWASP & {tr('attaque')} & ASR & {tr('ic')}\\,\\% & ASR & {tr('ic')}\\,\\% \\\\",
         "\\midrule",
     ]
     b_par_id = asr_b.set_index("id")
@@ -211,16 +291,16 @@ def synthese_latex(m_a: dict, m_b: dict) -> str:
         "% Généré par evaluation/analyse.py : ne pas modifier à la main",
         "\\begin{tabular}{@{}lrr@{}}",
         "\\toprule",
-        "Métrique & Version A & Version B \\\\",
+        f"{tr('metrique')} & Version A & Version B \\\\",
         "\\midrule",
-        ligne("Attaques réussies (ASR global)", "attaques_reussies", "attaques"),
-        ligne("Fuites du canary", "fuites_canary", "attaques"),
-        ligne("Attaques refusées par une protection", "attaques_bloquees", "attaques"),
-        ligne("Questions légitimes bloquées (faux positifs)", "faux_positifs", "legitimes"),
-        ligne("Réponses légitimes correctes", "reponses_correctes", "reponses_verifiees"),
-        f"Latence médiane, question légitime & {secondes(m_a['latence_mediane_s'])} & "
+        ligne(tr("m_asr"), "attaques_reussies", "attaques"),
+        ligne(tr("m_canary"), "fuites_canary", "attaques"),
+        ligne(tr("m_bloquees"), "attaques_bloquees", "attaques"),
+        ligne(tr("m_fp"), "faux_positifs", "legitimes"),
+        ligne(tr("m_correctes"), "reponses_correctes", "reponses_verifiees"),
+        f"{tr('m_latence')} & {secondes(m_a['latence_mediane_s'])} & "
         f"{secondes(m_b['latence_mediane_s'])} \\\\",
-        f"Requêtes non jugées (délai dépassé) & {m_a['erreurs']} & {m_b['erreurs']} \\\\",
+        f"{tr('m_erreurs')} & {m_a['erreurs']} & {m_b['erreurs']} \\\\",
         "\\bottomrule",
         "\\end{tabular}",
     ]) + "\n"
@@ -236,13 +316,13 @@ def graphique_asr(asr_a: pd.DataFrame, asr_b: pd.DataFrame, titre: str, fichier:
     fig, ax = plt.subplots(figsize=(10, 4.8))
 
     for decalage, table, couleur, nom in (
-            (-largeur / 2, asr_a.set_index("id"), ROUGE, "Version A (vulnérable)"),
-            (+largeur / 2, b_par_id, VERT, "Version B (sécurisée)")):
+            (-largeur / 2, asr_a.set_index("id"), ROUGE, tr("legende_a")),
+            (+largeur / 2, b_par_id, VERT, tr("legende_b"))):
         for i, id_ in enumerate(ids):
             l = table.loc[id_]
             x = i + decalage
             if l["total"] == 0:                       # aucune requête jugée
-                ax.text(x, 2, "non\nmesuré", ha="center", va="bottom", fontsize=7.5, color="#555555")
+                ax.text(x, 2, tr("non_mesure").replace(" ", "\n"), ha="center", va="bottom", fontsize=7.5, color="#555555")
                 continue
             # Hauteur minimale de 0,8 : une barre à 0 % reste visible (un liseré de couleur)
             ax.bar(x, max(l["asr"], 0.8), largeur - 0.03, color=couleur, label=nom if i == 0 else None)
@@ -259,7 +339,7 @@ def graphique_asr(asr_a: pd.DataFrame, asr_b: pd.DataFrame, titre: str, fichier:
     ax.set_xticklabels([f"{id_}\n{owasp[id_]}" for id_ in ids])
     ax.set_ylim(0, 112)
     ax.set_yticks(range(0, 101, 20))
-    ax.set_ylabel("Taux de succès des attaques (ASR, %)")
+    ax.set_ylabel(tr("axe_y"))
     ax.set_title(titre, loc="left", fontsize=12, fontweight="bold")
     ax.yaxis.grid(True, color="#DDDDDD", linewidth=0.7)
     ax.set_axisbelow(True)
@@ -267,7 +347,7 @@ def graphique_asr(asr_a: pd.DataFrame, asr_b: pd.DataFrame, titre: str, fichier:
         ax.spines[cote].set_visible(False)
     ax.tick_params(axis="y", length=0)
     ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.16), ncol=2, frameon=False)
-    fig.text(0.99, 0.01, "Trait gris : intervalle de confiance à 95 % (Wilson)",
+    fig.text(0.99, 0.01, tr("note_ic"),
              ha="right", fontsize=7.5, color="#555555")
     fig.tight_layout()
     fig.savefig(fichier, dpi=200)
@@ -291,7 +371,8 @@ def matrice_par_protection(par_config: dict, avant: tuple, apres: tuple) -> pd.D
     """Une ligne par configuration, une colonne par scénario, plus « Global ». Valeurs : ASR en %.
     avant, apres : lignes de comparaison (nom, tableau ASR) placées en tête et en fin."""
     lignes = {}
-    tous = [avant] + [(CONFIGURATIONS[c], a) for c, a in par_config.items()] + [apres]
+    noms = CONFIGURATIONS if LANGUE == "fr" else CONFIGURATIONS_EN
+    tous = [avant] + [(noms[c], a) for c, a in par_config.items()] + [apres]
     nb_scenarios = len(avant[1])
     for nom, asr in tous:
         ligne = asr.set_index("id")["asr"].to_dict()
@@ -310,10 +391,10 @@ def tableau_par_protection_latex(matrice: pd.DataFrame) -> str:
         return "n.m." if pd.isna(v) else f"{v:.0f}"
     lignes = [
         "% Généré par evaluation/analyse.py : ne pas modifier à la main",
-        "% ASR en pourcentage ; n.m. = non mesuré (délais dépassés, ou scénario non rejoué pour cette protection)",
+        "% " + tr("nm_tex"),
         "\\begin{tabular}{@{}l" + "r" * len(matrice.columns) + "@{}}",
         "\\toprule",
-        "Protection activée & " + " & ".join(matrice.columns) + " \\\\",
+        tr("protection") + " & " + " & ".join(matrice.columns) + " \\\\",
         "\\midrule",
     ]
     for nom, valeurs in matrice.iterrows():
@@ -343,10 +424,9 @@ def graphique_par_protection(matrice: pd.DataFrame, fichier: Path) -> None:
     ax.tick_params(which="minor", length=0)
     for cote in ax.spines.values():
         cote.set_visible(False)
-    ax.set_title("ASR (%) de la version B avec une seule protection activée",
-                 loc="left", fontsize=12, fontweight="bold", pad=28)
+    ax.set_title(tr("titre_carte"), loc="left", fontsize=12, fontweight="bold", pad=28)
     fig.colorbar(image, ax=ax, fraction=0.025, pad=0.02, label="ASR (%)")
-    fig.text(0.99, 0.01, "n.m. : non mesuré (délais dépassés, ou scénario non rejoué pour cette protection)", ha="right", fontsize=7.5, color="#555555")
+    fig.text(0.99, 0.01, tr("note_nm"), ha="right", fontsize=7.5, color="#555555")
     fig.tight_layout()
     fig.savefig(fichier, dpi=200)
     plt.close(fig)
@@ -362,12 +442,13 @@ def analyser_par_protection(dossier_resultats: Path, dossier: Path):
     matrice = matrice_par_protection(
         par_config,
         avant=("Version A", asr_par_scenario(charger(officiel["A"]))),
-        apres=("Toutes (version B)", asr_par_scenario(charger(officiel["B"]))))
+        apres=(tr("toutes"), asr_par_scenario(charger(officiel["B"]))))
     dossier.mkdir(parents=True, exist_ok=True)
-    (dossier / "tableau_par_protection.tex").write_text(
+    (dossier / f"tableau_par_protection{suffixe()}.tex").write_text(
         tableau_par_protection_latex(matrice), encoding="utf-8")
-    graphique_par_protection(matrice, dossier / "asr_par_protection.png")
-    matrice.round(1).to_csv(dossier / "metriques_par_protection.csv", index_label="configuration")
+    graphique_par_protection(matrice, dossier / f"asr_par_protection{suffixe()}.png")
+    if LANGUE == "fr":                            # les chiffres bruts : un seul fichier suffit
+        matrice.round(1).to_csv(dossier / "metriques_par_protection.csv", index_label="configuration")
     return matrice
 
 
@@ -380,29 +461,39 @@ def analyser_jeu(nom: str, jeu: dict, dossier: Path) -> dict:
     m_a, m_b = metriques_globales(df_a), metriques_globales(df_b)
 
     dossier.mkdir(parents=True, exist_ok=True)
-    (dossier / f"tableau_{nom}.tex").write_text(
+    s = suffixe()
+    (dossier / f"tableau_{nom}{s}.tex").write_text(
         tableau_latex(asr_a, asr_b, titres_des_scenarios(jeu["scenarios"])), encoding="utf-8")
-    (dossier / f"synthese_{nom}.tex").write_text(synthese_latex(m_a, m_b), encoding="utf-8")
-    graphique_asr(asr_a, asr_b, f"{jeu['titre']} : ASR par scénario", dossier / f"asr_{nom}.png")
-    pd.concat([asr_a.assign(version="A"), asr_b.assign(version="B")]).round(1).to_csv(
-        dossier / f"metriques_{nom}.csv", index=False)
+    (dossier / f"synthese_{nom}{s}.tex").write_text(synthese_latex(m_a, m_b), encoding="utf-8")
+    titre = jeu["titre"] if LANGUE == "fr" else TITRES_JEUX_EN.get(nom, jeu["titre"])
+    separateur = " : " if LANGUE == "fr" else ": "
+    graphique_asr(asr_a, asr_b, f"{titre}{separateur}{tr('par_scenario')}",
+                  dossier / f"asr_{nom}{s}.png")
+    if LANGUE == "fr":                            # les chiffres bruts : un seul fichier suffit
+        pd.concat([asr_a.assign(version="A"), asr_b.assign(version="B")]).round(1).to_csv(
+            dossier / f"metriques_{nom}.csv", index=False)
     return {"A": m_a, "B": m_b}
 
 
 def main():
-    for nom, jeu in JEUX.items():
-        m = analyser_jeu(nom, jeu, DOSSIER_FIGURES)
-        print(f"\n== {jeu['titre']} ==")
-        for version in ("A", "B"):
-            v = m[version]
-            print(f"  {version} : ASR {v['attaques_reussies']}/{v['attaques']}, "
-                  f"canary {v['fuites_canary']}, faux positifs {v['faux_positifs']}/{v['legitimes']}, "
-                  f"latence médiane {v['latence_mediane_s']:.1f} s, non jugées {v['erreurs']}")
-    matrice = analyser_par_protection(RACINE / DOSSIER_PAR_PROTECTION, DOSSIER_FIGURES)
-    if matrice is not None:
-        print("\n== ASR (%) par protection activée seule ==")
-        print(matrice.round(0).to_string(na_rep="n.m."))
-    print(f"\nFichiers écrits dans {DOSSIER_FIGURES}")
+    global LANGUE
+    for LANGUE in ("fr", "en"):                   # deux passes : mêmes chiffres, deux langues
+        for nom, jeu in JEUX.items():
+            m = analyser_jeu(nom, jeu, DOSSIER_FIGURES)
+            if LANGUE == "en":
+                continue
+            print(f"\n== {jeu['titre']} ==")
+            for version in ("A", "B"):
+                v = m[version]
+                print(f"  {version} : ASR {v['attaques_reussies']}/{v['attaques']}, "
+                      f"canary {v['fuites_canary']}, faux positifs {v['faux_positifs']}/{v['legitimes']}, "
+                      f"latence médiane {v['latence_mediane_s']:.1f} s, non jugées {v['erreurs']}")
+        matrice = analyser_par_protection(RACINE / DOSSIER_PAR_PROTECTION, DOSSIER_FIGURES)
+        if matrice is not None and LANGUE == "fr":
+            print("\n== ASR (%) par protection activée seule ==")
+            print(matrice.round(0).to_string(na_rep="n.m."))
+    LANGUE = "fr"
+    print(f"\nFichiers écrits dans {DOSSIER_FIGURES} (français, et anglais avec le suffixe _en)")
 
 
 if __name__ == "__main__":
